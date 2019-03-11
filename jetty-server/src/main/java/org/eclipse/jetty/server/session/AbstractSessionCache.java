@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,6 @@
 
 package org.eclipse.jetty.server.session;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -30,7 +29,6 @@ import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
-import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.Locker.Lock;
@@ -107,6 +105,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
      * @param data the session data
      * @return a new Session object
      */
+    @Override
     public abstract Session newSession (SessionData data);
     
     
@@ -152,11 +151,13 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     
     /**
      * Remove the session with this identity from the store
+     * 
      * @param id the id
-     * @return true if removed false otherwise
+     * @return Session that was removed or null
      */
     public abstract Session doDelete (String id);
 
+    
     
     
     /**
@@ -166,18 +167,19 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     {
 
         /**
+         * @param handler SessionHandler to which this session belongs
          * @param data the session data
          */
-        public PlaceHolderSession(SessionData data)
+        public PlaceHolderSession(SessionHandler handler, SessionData data)
         {
-            super(null, data);
+            super(handler, data);
         }
     }
     
     
     
     /**
-     * 
+     * @param handler the {@link SessionHandler} to use
      */
     public AbstractSessionCache (SessionHandler handler)
     {
@@ -190,6 +192,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     /**
      * @return the SessionManger
      */
+    @Override
     public SessionHandler getSessionHandler()
     {
         return _handler;
@@ -199,6 +202,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     /** 
      * @see org.eclipse.jetty.server.session.SessionCache#initialize(org.eclipse.jetty.server.session.SessionContext)
      */
+    @Override
     public void initialize (SessionContext context)
     {
         if (isStarted())
@@ -238,6 +242,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     /**
      * @return the SessionDataStore or null if there isn't one
      */
+    @Override
     public SessionDataStore getSessionDataStore()
     {
         return _sessionDataStore;
@@ -246,6 +251,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     /** 
      * @see org.eclipse.jetty.server.session.SessionCache#setSessionDataStore(org.eclipse.jetty.server.session.SessionDataStore)
      */
+    @Override
     public void setSessionDataStore(SessionDataStore sessionStore)
     {
         updateBean(_sessionDataStore, sessionStore);
@@ -261,6 +267,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
      * @see org.eclipse.jetty.server.session.SessionCache#getEvictionPolicy()
      */
     @ManagedAttribute(value="session eviction policy", readonly=true)
+    @Override
     public int getEvictionPolicy()
     {
         return _evictionPolicy;
@@ -274,6 +281,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
      * 
      * @see org.eclipse.jetty.server.session.SessionCache#setEvictionPolicy(int)
      */
+    @Override
     public void setEvictionPolicy(int evictionTimeout)
     {
         _evictionPolicy = evictionTimeout;
@@ -309,7 +317,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
      * If a session's data cannot be loaded from the store without error, remove
      * it from the persistent store.
      * 
-     * @param removeUnloadableSessions 
+     * @param removeUnloadableSessions if <code>true</code> unloadable sessions will be removed from session store
      */
     @Override
     public void setRemoveUnloadableSessions(boolean removeUnloadableSessions)
@@ -346,7 +354,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                     LOG.debug("Session {} not found locally, attempting to load", id);
        
                 //didn't get a session, try and create one and put in a placeholder for it
-                PlaceHolderSession phs = new PlaceHolderSession (new SessionData(id, null, null,0,0,0,0));
+                PlaceHolderSession phs = new PlaceHolderSession (_handler, new SessionData(id, null, null,0,0,0,0));
                 Lock phsLock = phs.lock();
                 Session s = doPutIfAbsent(id, phs);
                 if (s == null)
@@ -380,7 +388,6 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                             {
                                 //successfully swapped in the session
                                 session.setResident(true);
-                                session.updateInactivityTimer();
                                 phsLock.close();
                                 break;
                             }
@@ -499,16 +506,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                 throw new IllegalStateException("Session "+id+" is not managed");
             
             if (!session.isValid())
-                return;
-            
-            if (_sessionDataStore == null)
-            {
-                if (LOG.isDebugEnabled()) LOG.debug("No SessionDataStore, putting into SessionCache only id={}", id);
-                session.setResident(true);
-                if (doPutIfAbsent(id, session) == null) //ensure it is in our map
-                    session.updateInactivityTimer();
-                return;
-            }       
+                return; 
 
             //don't do anything with the session until the last request for it has finished
             if ((session.getRequests() <= 0))
@@ -528,8 +526,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                     else
                     {
                         session.setResident(true);
-                        if (doPutIfAbsent(id,session) == null) //ensure it is in our map 
-                            session.updateInactivityTimer();
+                        doPutIfAbsent(id,session); //ensure it is in our map 
                         if (LOG.isDebugEnabled())LOG.debug("Non passivating SessionDataStore, session in SessionCache only id={}",id);
                     }
                 }
@@ -552,8 +549,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                         //reactivate the session
                         session.didActivate();    
                         session.setResident(true);
-                        if (doPutIfAbsent(id,session) == null) //ensure it is in our map  
-                            session.updateInactivityTimer();
+                        doPutIfAbsent(id,session);//ensure it is in our map
                         if (LOG.isDebugEnabled())LOG.debug("Session reactivated id={}",id);
                     }
                 }
@@ -562,8 +558,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
             {
                 if (LOG.isDebugEnabled()) LOG.debug("Req count={} for id={}",session.getRequests(),id);
                 session.setResident(true);
-                if (doPutIfAbsent(id, session) == null) //ensure it is the map, but don't save it to the backing store until the last request exists
-                    session.updateInactivityTimer();
+                doPutIfAbsent(id, session); //ensure it is the map, but don't save it to the backing store until the last request exists
             }
         }
     }
@@ -621,29 +616,22 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
     {
         //get the session, if its not in memory, this will load it
         Session session = get(id); 
-
  
         //Always delete it from the backing data store
         if (_sessionDataStore != null)
         {
-
             boolean dsdel = _sessionDataStore.delete(id);
-            if (LOG.isDebugEnabled()) LOG.debug("Session {} deleted in db {}",id, dsdel);                   
+            if (LOG.isDebugEnabled()) LOG.debug("Session {} deleted in session data store {}",id, dsdel);                   
         }
         
         //delete it from the session object store
         if (session != null)
         {
-            session.stopInactivityTimer();
             session.setResident(false);
         }
         
         return doDelete(id);
     }
-
-    
-   
-
 
 
     /** 
@@ -656,7 +644,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
            return Collections.emptySet();
        
        if (LOG.isDebugEnabled())
-           LOG.debug("SessionDataStore checking expiration on {}", candidates);
+           LOG.debug("{} checking expiration on {}", this, candidates);
        Set<String> allCandidates = _sessionDataStore.getExpired(candidates);
        Set<String> sessionsInUse = new HashSet<>();
        if (allCandidates != null)
@@ -691,6 +679,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
      * 
      * @param session session to check
      */
+    @Override
     public void checkInactiveSession (Session session)
     {
         if (session == null)
@@ -723,7 +712,7 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
                 catch (Exception e)
                 {
                     LOG.warn("Passivation of idle session {} failed", session.getId(), e);
-                    session.updateInactivityTimer();
+                    //session.updateInactivityTimer();
                 }
             }
         }
@@ -733,11 +722,8 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
 
     
 
-
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionCache#renewSessionId(java.lang.String, java.lang.String)
-     */
-    public Session renewSessionId (String oldId, String newId)
+    @Override
+    public Session renewSessionId (String oldId, String newId, String oldExtendedId, String newExtendedId)
     throws Exception
     {
         if (StringUtil.isBlank(oldId))
@@ -746,24 +732,47 @@ public abstract class AbstractSessionCache extends ContainerLifeCycle implements
             throw new IllegalArgumentException ("New session id is null");
 
         Session session = get(oldId);
-        if (session == null)
-            return null;
+        renewSessionId(session, newId, newExtendedId);
 
+        return session;
+    }
+    
+    
+    /**
+     * Swap the id on a session.
+     * 
+     * @param session the session for which to do the swap
+     * @param newId the new id
+     * @param newExtendedId the full id plus node id
+     * 
+     * @throws Exception if there was a failure saving the change
+     */
+    protected void renewSessionId (Session session, String newId, String newExtendedId)
+    throws Exception
+    {
+        if (session == null)
+            return;
+        
         try (Lock lock = session.lock())
         {
+            String oldId = session.getId();
             session.checkValidForWrite(); //can't change id on invalid session
             session.getSessionData().setId(newId);
             session.getSessionData().setLastSaved(0); //pretend that the session has never been saved before to get a full save
-            session.getSessionData().setDirty(true);  //ensure we will try to write the session out
+            session.getSessionData().setDirty(true);  //ensure we will try to write the session out    
+            session.setExtendedId(newExtendedId); //remember the new extended id
+            session.setIdChanged(true); //session id changed
+            
             doPutIfAbsent(newId, session); //put the new id into our map
             doDelete (oldId); //take old out of map
+            
             if (_sessionDataStore != null)
             {
                 _sessionDataStore.delete(oldId);  //delete the session data with the old id
                 _sessionDataStore.store(newId, session.getSessionData()); //save the session data with the new id
             }
-            LOG.info("Session id {} swapped for new id {}", oldId, newId);
-            return session;
+            if (LOG.isDebugEnabled())
+                LOG.debug ("Session id {} swapped for new id {}", oldId, newId);
         }
     }
     

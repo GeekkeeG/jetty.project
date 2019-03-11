@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,6 +22,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.eclipse.jetty.server.UserIdentity;
 import org.eclipse.jetty.util.log.Log;
@@ -49,11 +50,11 @@ public class HashLoginService extends AbstractLoginService
 {
     private static final Logger LOG = Log.getLogger(HashLoginService.class);
 
-    private PropertyUserStore _propertyUserStore;
-    private File _configFile;
-    private Resource _configResource;
+    private String _config;
     private boolean hotReload = false; // default is not to reload
-    
+    private UserStore _userStore;
+    private boolean _userStoreAutoCreate = false;
+
 
     /* ------------------------------------------------------------ */
     public HashLoginService()
@@ -76,28 +77,15 @@ public class HashLoginService extends AbstractLoginService
     /* ------------------------------------------------------------ */
     public String getConfig()
     {
-        if(_configFile == null)
-        {
-            return null;
-        }
-        return _configFile.getAbsolutePath();
+        return _config;
     }
 
+
     /* ------------------------------------------------------------ */
-    
-    /**
-     * @deprecated use {@link #setConfig(String)} instead
-     */
     @Deprecated
-    public void getConfig(String config)
-    {
-        setConfig(config);
-    }
-
-    /* ------------------------------------------------------------ */
     public Resource getConfigResource()
     {
-        return _configResource;
+        return null;
     }
 
     /* ------------------------------------------------------------ */
@@ -107,12 +95,11 @@ public class HashLoginService extends AbstractLoginService
      * The property file maps usernames to password specs followed by an optional comma separated list of role names.
      * </p>
      * 
-     * @param configFile
-     *            Filename of user properties file.
+     * @param config uri or url or path to realm properties file
      */
-    public void setConfig(String configFile)
+    public void setConfig(String config)
     {
-        _configFile = new File(configFile);
+        _config=config;
     }
     
     /**
@@ -139,13 +126,21 @@ public class HashLoginService extends AbstractLoginService
         this.hotReload = enable;
     }
 
-  
+    /**
+     * Configure the {@link UserStore} implementation to use.
+     * If none, for backward compat if none the {@link PropertyUserStore} will be used
+     * @param userStore the {@link UserStore} implementation to use
+     */
+    public void setUserStore(UserStore userStore)
+    {
+        this._userStore = userStore;
+    }
 
     /* ------------------------------------------------------------ */
     @Override
     protected String[] loadRoleInfo(UserPrincipal user)
     {
-        UserIdentity id = _propertyUserStore.getUserIdentity(user.getName());
+        UserIdentity id = _userStore.getUserIdentity(user.getName());
         if (id == null)
             return null;
 
@@ -154,21 +149,19 @@ public class HashLoginService extends AbstractLoginService
         if (roles == null)
             return null;
 
-        List<String> list = new ArrayList<>();
-        for (RolePrincipal r:roles)
-            list.add(r.getName());
+        List<String> list = roles.stream()
+            .map( rolePrincipal -> rolePrincipal.getName() )
+            .collect(  Collectors.toList() );
 
         return list.toArray(new String[roles.size()]);
     }
 
     
-    
-    
     /* ------------------------------------------------------------ */
     @Override
     protected UserPrincipal loadUserInfo(String userName)
     {
-        UserIdentity id = _propertyUserStore.getUserIdentity(userName);
+        UserIdentity id = _userStore.getUserIdentity(userName);
         if (id != null)
         {
             return (UserPrincipal)id.getUserPrincipal();
@@ -187,16 +180,18 @@ public class HashLoginService extends AbstractLoginService
     protected void doStart() throws Exception
     {
         super.doStart();
-        
-        if (_propertyUserStore == null)
+
+        // can be null so we switch to previous behaviour using PropertyUserStore
+        if (_userStore == null)
         {
             if(LOG.isDebugEnabled())
-                LOG.debug("doStart: Starting new PropertyUserStore. PropertiesFile: " + _configFile + " hotReload: " + hotReload);
-            
-            _propertyUserStore = new PropertyUserStore();
-            _propertyUserStore.setHotReload(hotReload);
-            _propertyUserStore.setConfigPath(_configFile);
-            _propertyUserStore.start();
+                LOG.debug("doStart: Starting new PropertyUserStore. PropertiesFile: " + _config + " hotReload: " + hotReload);
+            PropertyUserStore propertyUserStore = new PropertyUserStore();
+            propertyUserStore.setHotReload(hotReload);
+            propertyUserStore.setConfigPath(_config);
+            propertyUserStore.start();
+            _userStore = propertyUserStore;
+            _userStoreAutoCreate = true;
         }
     }
 
@@ -208,8 +203,8 @@ public class HashLoginService extends AbstractLoginService
     protected void doStop() throws Exception
     {
         super.doStop();
-        if (_propertyUserStore != null)
-            _propertyUserStore.stop();
-        _propertyUserStore = null;
+        if (_userStore != null && _userStoreAutoCreate)
+            _userStore.stop();
+        _userStore = null;
     }
 }

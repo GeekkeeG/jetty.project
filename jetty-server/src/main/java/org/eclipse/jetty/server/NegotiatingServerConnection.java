@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -55,27 +55,27 @@ public abstract class NegotiatingServerConnection extends AbstractConnection
         this.engine = engine;
     }
 
-    protected List<String> getProtocols()
+    public List<String> getProtocols()
     {
         return protocols;
     }
 
-    protected String getDefaultProtocol()
+    public String getDefaultProtocol()
     {
         return defaultProtocol;
     }
 
-    protected Connector getConnector()
+    public Connector getConnector()
     {
         return connector;
     }
     
-    protected SSLEngine getSSLEngine()
+    public SSLEngine getSSLEngine()
     {
         return engine;
     }
 
-    protected String getProtocol()
+    public String getProtocol()
     {
         return protocol;
     }

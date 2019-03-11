@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -46,6 +46,7 @@ import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.server.UserIdentity;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.URIUtil;
+import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.security.Constraint;
@@ -765,13 +766,9 @@ public class ConstraintSecurityHandler extends SecurityHandler implements Constr
     @Override
     public void dump(Appendable out,String indent) throws IOException
     {
-        // TODO these should all be beans
-        dumpBeans(out,indent,
-                Collections.singleton(getLoginService()),
-                Collections.singleton(getIdentityService()),
-                Collections.singleton(getAuthenticator()),
-                Collections.singleton(_roles),
-                _constraintMap.entrySet());
+        dumpObjects(out,indent,
+                DumpableCollection.from("roles",_roles),
+                DumpableCollection.from("constraints",_constraintMap.entrySet()));
     }
     
     /* ------------------------------------------------------------ */
@@ -872,7 +869,7 @@ public class ConstraintSecurityHandler extends SecurityHandler implements Constr
      * 
      * @param path the path
      * @param methodMappings the method mappings
-     * @return true if ommision exist
+     * @return true if omission exist
      */
     protected boolean omissionsExist (String path, Map<String, RoleInfo> methodMappings)
     {

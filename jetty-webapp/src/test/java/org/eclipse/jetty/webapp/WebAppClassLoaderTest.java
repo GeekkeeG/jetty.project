@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,13 +19,18 @@
 package org.eclipse.jetty.webapp;
 
 import static org.eclipse.jetty.toolchain.test.ExtraMatchers.ordered;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.InputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.net.URI;
@@ -34,26 +39,23 @@ import java.nio.file.Path;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
+import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.resource.PathResource;
 import org.eclipse.jetty.util.resource.Resource;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class WebAppClassLoaderTest
 {
-    @Rule
-    public ExpectedException expectedException = ExpectedException.none();
-
     private Path testWebappDir;
     private WebAppContext _context;
     protected WebAppClassLoader _loader;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         this.testWebappDir = MavenTestingUtils.getProjectDirPath("src/test/webapp");
@@ -62,6 +64,7 @@ public class WebAppClassLoaderTest
         _context = new WebAppContext();
         _context.setBaseResource(webapp);
         _context.setContextPath("/test");
+        _context.setExtraClasspath("src/test/resources/ext/*");
 
         _loader = new WebAppClassLoader(_context);
         _loader.addJars(webapp.addPath("WEB-INF/lib"));
@@ -103,6 +106,10 @@ public class WebAppClassLoaderTest
         assertCanLoadClass("org.acme.webapp.ClassInJarB");
         assertCanLoadClass("org.acme.other.ClassInClassesC");
 
+        assertCanLoadClass("org.acme.extone.Main");
+        assertCanLoadClass("org.acme.exttwo.Main");
+        assertCantLoadClass("org.acme.extthree.Main");
+
         assertCantLoadClass("org.eclipse.jetty.webapp.Configuration");
 
         Class<?> clazzA = _loader.loadClass("org.acme.webapp.ClassInJarA");
@@ -117,11 +124,16 @@ public class WebAppClassLoaderTest
         assertCanLoadClass("org.acme.webapp.ClassInJarB");
         assertCanLoadClass("org.acme.other.ClassInClassesC");
 
+        assertCanLoadClass("org.acme.extone.Main");
+        assertCanLoadClass("org.acme.exttwo.Main");
+        assertCantLoadClass("org.acme.extthree.Main");
+
         assertCantLoadClass("org.eclipse.jetty.webapp.Configuration");
 
         Class<?> clazzA = _loader.loadClass("org.acme.webapp.ClassInJarA");
-        expectedException.expect(NoSuchFieldException.class);
-        clazzA.getField("FROM_PARENT");
+        assertThrows(NoSuchFieldException.class, () -> {
+            clazzA.getField("FROM_PARENT");
+        });
     }
     
     @Test
@@ -131,6 +143,7 @@ public class WebAppClassLoaderTest
         
         _loader.addTransformer(new ClassFileTransformer()
         {
+            @Override
             public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer)
                     throws IllegalClassFormatException
             {
@@ -143,6 +156,7 @@ public class WebAppClassLoaderTest
         });
         _loader.addTransformer(new ClassFileTransformer()
         {
+            @Override
             public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer)
                     throws IllegalClassFormatException
             {
@@ -176,6 +190,7 @@ public class WebAppClassLoaderTest
     {
         _loader.addTransformer(new ClassFileTransformer()
         {
+            @Override
             public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classfileBuffer)
                     throws IllegalClassFormatException
             {
@@ -245,7 +260,7 @@ public class WebAppClassLoaderTest
     public void testResources() throws Exception
     {
         // The existence of a URLStreamHandler changes the behavior
-        assumeThat("No URLStreamHandler in place", URLStreamHandlerUtil.getFactory(), nullValue());
+        assumeTrue(URLStreamHandlerUtil.getFactory() == null, "URLStreamHandler changes behavior, skip test");
         
         List<URL> expected = new ArrayList<>();
         List<URL> resources;
@@ -321,6 +336,28 @@ public class WebAppClassLoaderTest
         
         assertThat("Resources Found (Parent Loader Priority == true) (with systemClasses filtering)",resources,ordered(expected));
         
+    }
+
+    @Test
+    public void ordering() throws Exception
+    {
+        // The existence of a URLStreamHandler changes the behavior
+        assumeTrue(URLStreamHandlerUtil.getFactory() == null, "URLStreamHandler changes behavior, skip test");
+
+        Enumeration<URL> resources = _loader.getResources("org/acme/clashing.txt");
+        assertTrue(resources.hasMoreElements());
+        URL resource = resources.nextElement();
+        try (InputStream data = resource.openStream())
+        {
+            assertThat("correct contents of " + resource, IO.toString(data), is("alpha"));
+        }
+        assertTrue(resources.hasMoreElements());
+        resource = resources.nextElement();
+        try (InputStream data = resource.openStream())
+        {
+            assertThat("correct contents of " + resource, IO.toString(data), is("omega"));
+        }
+        assertFalse(resources.hasMoreElements());
     }
 
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,10 @@
 
 package org.eclipse.jetty.test.support;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -33,21 +37,19 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.eclipse.jetty.http.HttpScheme;
-import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.xml.XmlConfiguration;
-import org.junit.Assert;
-import org.junit.Ignore;
+import org.junit.jupiter.api.Disabled;
 
 /**
  * Allows for setting up a Jetty server for testing based on XML configuration files.
  */
-@Ignore
+@Disabled
 public class TestableJettyServer
 {
     private List<URL> _xmlConfigurations;
-    private final Map<String,String> _properties = new HashMap<String, String>();
+    private final Map<String,String> _properties = new HashMap<>();
     private Server _server;
     private int _serverPort;
     private String _scheme = HttpScheme.HTTP.asString();
@@ -58,7 +60,7 @@ public class TestableJettyServer
 
     public TestableJettyServer() throws IOException
     {
-        _xmlConfigurations = new ArrayList<URL>();
+        _xmlConfigurations = new ArrayList<>();
         Properties properties = new Properties();
 
         /* Establish Popular Directories */
@@ -153,7 +155,7 @@ public class TestableJettyServer
             throw new Exception("Load failed to configure a " + Server.class.getName());
         }
 
-        Assert.assertEquals("Server load count",1,serverCount);
+        assertEquals(1, serverCount, "Server load count");
 
         this._server = foundServer;
         this._server.setStopTimeout(1000);
@@ -172,13 +174,13 @@ public class TestableJettyServer
 
     public void start() throws Exception
     {
-        Assert.assertNotNull("Server should not be null (failed load?)",_server);
+        assertNotNull(_server, "Server should not be null (failed load?)");
 
         _server.start();
 
         // Find the active server port.
         this._serverPort = ((NetworkConnector)_server.getConnectors()[0]).getLocalPort();
-        Assert.assertTrue("Server Port is between 1 and 65535. Actually <" + _serverPort + ">",(1 <= this._serverPort) && (this._serverPort <= 65535));
+        assertTrue((1 <= this._serverPort) && (this._serverPort <= 65535),"Server Port is between 1 and 65535. Actually <" + _serverPort + ">");
     }
 
     public int getServerPort()

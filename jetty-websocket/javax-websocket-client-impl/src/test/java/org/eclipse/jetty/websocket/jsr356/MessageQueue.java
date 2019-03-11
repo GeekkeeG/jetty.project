@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,6 +25,10 @@ import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
+/**
+ * @deprecated use {@code BlockingArrayQueue<String>} instead
+ */
+@Deprecated
 public class MessageQueue extends BlockingArrayQueue<String>
 {
     private static final Logger LOG = Log.getLogger(MessageQueue.class);
@@ -49,7 +53,7 @@ public class MessageQueue extends BlockingArrayQueue<String>
             {
                 /* ignore */
             }
-            if (!LOG.isDebugEnabled() && (System.currentTimeMillis() > expireOn))
+            if (!LOG.isDebugEnabled() && (System.currentTimeMillis() > expireOn) && this.size() < expectedMessageCount)
             {
                 throw new TimeoutException(String.format("Timeout reading all %d expected messages. (managed to only read %d messages)",expectedMessageCount,
                         this.size()));

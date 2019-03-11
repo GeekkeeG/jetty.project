@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -42,6 +42,7 @@ import org.eclipse.jetty.websocket.api.Session;
  * <p>
  * A CDI Context definition for how CDI will use objects defined to belong to the WebSocketScope
  */
+@Deprecated
 public class WebSocketScopeContext implements Context
 {
     private static final Logger LOG = Log.getLogger(WebSocketScopeContext.class);

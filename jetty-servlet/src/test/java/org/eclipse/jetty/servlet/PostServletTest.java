@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,14 @@
 
 package org.eclipse.jetty.servlet;
 
-import java.io.IOException;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -28,22 +35,14 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.eclipse.jetty.server.HttpChannel;
 import org.eclipse.jetty.server.LocalConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.log.StacklessLogging;
-import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class PostServletTest
 {
@@ -55,6 +54,7 @@ public class PostServletTest
 
     public static class BasicReadPostServlet extends HttpServlet
     {
+        @Override
         protected void doPost(HttpServletRequest request, HttpServletResponse response)
         {
             posted.set(true);
@@ -93,7 +93,7 @@ public class PostServletTest
     private Server server;
     private LocalConnector connector;
 
-    @Before
+    @BeforeEach
     public void startServer() throws Exception
     {
         complete=new CountDownLatch(1);
@@ -113,7 +113,7 @@ public class PostServletTest
         server.start();
     }
 
-    @After
+    @AfterEach
     public void stopServer() throws Exception
     {
         this.server.stop();
@@ -136,7 +136,7 @@ public class PostServletTest
         req.append("0\r\n");
         req.append("\r\n");
 
-        String resp = connector.getResponses(req.toString(),1,TimeUnit.SECONDS);
+        String resp = connector.getResponse(req.toString());
 
         assertThat("resp", resp, containsString("HTTP/1.1 200 OK"));
         assertThat("resp", resp, containsString("chunked"));

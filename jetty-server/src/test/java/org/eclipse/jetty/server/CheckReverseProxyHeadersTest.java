@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,19 +18,18 @@
 
 package org.eclipse.jetty.server;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  *
@@ -151,9 +150,7 @@ public class CheckReverseProxyHeadersTest
         try
         {
             server.start();
-            connector.getResponses("GET / HTTP/1.1\r\n" +"Connection: close\r\n" + headers + "\r\n\r\n",
-                1000,TimeUnit.SECONDS);
-
+            connector.getResponse("GET / HTTP/1.1\r\n" +"Connection: close\r\n" + headers + "\r\n\r\n");
             Error error = validationHandler.getError();
 
             if (error != null)

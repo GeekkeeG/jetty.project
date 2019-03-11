@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -37,7 +37,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.eclipse.jetty.start.Props.Prop;
-import org.eclipse.jetty.start.config.CommandLineConfigSource;
 
 /**
  * Represents a Module metadata, as defined in Jetty.
@@ -60,7 +59,7 @@ import org.eclipse.jetty.start.config.CommandLineConfigSource;
  */
 public class Module implements Comparable<Module>
 {
-    private static final String VERSION_UNSPECIFIED = "9.2";
+    private static final String VERSION_UNSPECIFIED = "0.0";
     static Pattern MOD_NAME = Pattern.compile("^(.*)\\.mod",Pattern.CASE_INSENSITIVE);
     static Pattern SET_PROPERTY = Pattern.compile("^(#?)\\s*([^=\\s]+)=(.*)$");
 
@@ -90,6 +89,9 @@ public class Module implements Comparable<Module>
     
     /** List of library options for this Module */
     private final List<String> _libs=new ArrayList<>();
+
+    /** List of JPMS options for this Module */
+    private final List<String> _jpms=new ArrayList<>();
     
     /** List of files for this Module */
     private final List<String> _files=new ArrayList<>();
@@ -116,7 +118,7 @@ public class Module implements Comparable<Module>
     private final List<String> _license=new ArrayList<>();
     
     /** Dependencies */
-    private final Set<String> _depends=new HashSet<>();
+    private final List<String> _depends=new ArrayList<>();
     
     /** Optional */
     private final Set<String> _optional=new HashSet<>();
@@ -183,10 +185,10 @@ public class Module implements Comparable<Module>
     {
         Function<String,String> expander = d->{return props.expand(d);};
         
-        Set<String> tmp=_depends.stream().map(expander).collect(Collectors.toSet());
+        List<String> tmp=_depends.stream().map(expander).collect(Collectors.toList());
         _depends.clear();
         _depends.addAll(tmp);
-        tmp=_optional.stream().map(expander).collect(Collectors.toSet());
+        tmp=_optional.stream().map(expander).collect(Collectors.toList());
         _optional.clear();
         _optional.addAll(tmp);
     }
@@ -229,6 +231,11 @@ public class Module implements Comparable<Module>
     public List<String> getXmls()
     {
         return _xmls;
+    }
+
+    public List<String> getJPMS()
+    {
+        return _jpms;
     }
     
     public Version getVersion()
@@ -329,7 +336,8 @@ public class Module implements Comparable<Module>
                                 break;
                             case "DEPEND":  
                             case "DEPENDS":
-                                _depends.add(line);
+                                if (!_depends.contains(line))
+                                    _depends.add(line);
                                 break;
                             case "FILE":
                             case "FILES":
@@ -349,6 +357,9 @@ public class Module implements Comparable<Module>
                             case "LIB":
                             case "LIBS":
                                 _libs.add(line);
+                                break;
+                            case "JPMS":
+                                _jpms.add(line);
                                 break;
                             case "LICENSE":
                             case "LICENSES":
@@ -437,9 +448,9 @@ public class Module implements Comparable<Module>
         return str.toString();
     }
 
-    public Set<String> getDepends()
+    public List<String> getDepends()
     {
-        return new HashSet<>(_depends);
+        return new ArrayList<>(_depends);
     }
 
     public Set<String>  getProvides()
@@ -526,9 +537,12 @@ public class Module implements Comparable<Module>
             if (m.matches() && m.groupCount()==3)
             {
                 String name = m.group(2);
+                String value = m.group(3);
                 Prop p = props.getProp(name);
-                if (p!=null && p.origin.startsWith(CommandLineConfigSource.ORIGIN_CMD_LINE))
+                
+                if (p!=null && (p.source==null || !p.source.endsWith("?=")) && ("#".equals(m.group(1)) || !value.equals(p.value)))
                 {
+                    System.err.printf("%s == %s :: %s%n",name,value,p.source);
                     StartLog.info("%-15s property set %s=%s",this._name,name,p.value);
                     out.printf("%s=%s%n",name,p.value);
                 }

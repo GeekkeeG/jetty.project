@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -33,7 +33,7 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.junit.After;
+import org.junit.jupiter.api.AfterEach;
 
 public abstract class AbstractRuleTestCase
 {
@@ -44,7 +44,7 @@ public abstract class AbstractRuleTestCase
     protected volatile CountDownLatch _latch;
     protected boolean _isSecure = false;
 
-    @After
+    @AfterEach
     public void stopServer() throws Exception
     {
         stop();

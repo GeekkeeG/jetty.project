@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -169,7 +169,7 @@ public class FileResource extends Resource
             if (base.isDirectory())
             {
                 // treat all paths being added as relative
-                uri=new URI(URIUtil.addPaths(base.toURI().toASCIIString(),encoded));
+                uri=new URI(URIUtil.addEncodedPaths(base.toURI().toASCIIString(),encoded));
             }
             else
             {
@@ -407,6 +407,7 @@ public class FileResource extends Resource
      * @return <code>true</code> of the object <code>o</code> is a {@link FileResource} pointing to the same file as this resource. 
      */
     @Override
+    @SuppressWarnings("ReferenceEquality")
     public boolean equals( Object o)
     {
         if (this == o)
@@ -416,7 +417,7 @@ public class FileResource extends Resource
             return false;
 
         FileResource f=(FileResource)o;
-        return f._file == _file || (null != _file && _file.equals(f._file));
+        return f._file==_file || (null != _file && _file.equals(f._file));
     }
 
     /* ------------------------------------------------------------ */

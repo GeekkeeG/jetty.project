@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -24,14 +24,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
@@ -59,7 +55,6 @@ import org.eclipse.jetty.util.Uptime;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.Name;
-import org.eclipse.jetty.util.component.Graceful;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -67,7 +62,6 @@ import org.eclipse.jetty.util.thread.Locker;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ShutdownThread;
 import org.eclipse.jetty.util.thread.ThreadPool;
-import org.eclipse.jetty.util.thread.ThreadPool.SizedThreadPool;
 
 /* ------------------------------------------------------------ */
 /** Jetty HTTP Servlet Server.
@@ -356,6 +350,7 @@ public class Server extends HandlerWrapper implements Attributes
             setErrorHandler(new ErrorHandler());
         if (_errorHandler instanceof ErrorHandler.ErrorPageMapper)
             LOG.warn("ErrorPageMapper not supported for Server level Error Handling");
+        _errorHandler.setServer(this);
         
         //If the Server should be stopped when the jvm exits, register
         //with the shutdown handler thread.
@@ -369,7 +364,10 @@ public class Server extends HandlerWrapper implements Attributes
         //Start a thread waiting to receive "stop" commands.
         ShutdownMonitor.getInstance().start(); // initialize
 
-        LOG.info("jetty-" + getVersion());
+        String gitHash = Jetty.GIT_HASH;
+        String timestamp = Jetty.BUILD_TIMESTAMP;
+
+        LOG.info("jetty-{}; built: {}; git: {}; jvm {}", getVersion(), timestamp, gitHash, System.getProperty("java.runtime.version",System.getProperty("java.version")));
         if (!Jetty.STABLE)
         {
             LOG.warn("THIS IS NOT A STABLE RELEASE! DO NOT USE IN PRODUCTION!");
@@ -377,41 +375,6 @@ public class Server extends HandlerWrapper implements Attributes
         }
         
         HttpGenerator.setJettyVersion(HttpConfiguration.SERVER_VERSION);
-
-        // Check that the thread pool size is enough.
-        SizedThreadPool pool = getBean(SizedThreadPool.class);
-        int max=pool==null?-1:pool.getMaxThreads();
-        int selectors=0;
-        int acceptors=0;
-
-        for (Connector connector : _connectors)
-        {
-            if (connector instanceof AbstractConnector)
-            {
-                AbstractConnector abstractConnector = (AbstractConnector)connector;
-                Executor connectorExecutor = connector.getExecutor();
-
-                if (connectorExecutor != pool)
-                {
-                    // Do not count the selectors and acceptors from this connector at
-                    // the server level, because the connector uses a dedicated executor.
-                    continue;
-                }
-
-                acceptors += abstractConnector.getAcceptors();
-
-                if (connector instanceof ServerConnector)
-                {
-                    // The SelectorManager uses 2 threads for each selector,
-                    // one for the normal and one for the low priority strategies.
-                    selectors += 2 * ((ServerConnector)connector).getSelectorManager().getSelectorCount();
-                }
-            }
-        }
-
-        int needed=1+selectors+acceptors;
-        if (max>0 && needed>max)
-            throw new IllegalStateException(String.format("Insufficient threads: max=%d < needed(acceptors=%d + selectors=%d + request=1)",max,acceptors,selectors));
 
         MultiException mex=new MultiException();
         try
@@ -462,48 +425,23 @@ public class Server extends HandlerWrapper implements Attributes
         if (LOG.isDebugEnabled())
             LOG.debug("doStop {}",this);
 
-        MultiException mex=new MultiException();
+        MultiException mex = new MultiException();
 
-        // list if graceful futures
-        List<Future<Void>> futures = new ArrayList<>();
-
-        // First close the network connectors to stop accepting new connections
-        for (Connector connector : _connectors)
-            futures.add(connector.shutdown());
-
-        // Then tell the contexts that we are shutting down
-        Handler[] gracefuls = getChildHandlersByClass(Graceful.class);
-        for (Handler graceful : gracefuls)
-            futures.add(((Graceful)graceful).shutdown());
-
-        // Shall we gracefully wait for zero connections?
-        long stopTimeout = getStopTimeout();
-        if (stopTimeout>0)
+        try
         {
-            long stop_by=System.currentTimeMillis()+stopTimeout;
-            if (LOG.isDebugEnabled())
-                LOG.debug("Graceful shutdown {} by ",this,new Date(stop_by));
-
-            // Wait for shutdowns
-            for (Future<Void> future: futures)
-            {
-                try
-                {
-                    if (!future.isDone())
-                        future.get(Math.max(1L,stop_by-System.currentTimeMillis()),TimeUnit.MILLISECONDS);
-                }
-                catch (Exception e)
-                {
-                    mex.add(e);
-                }
-            }
+            // list if graceful futures
+            List<Future<Void>> futures = new ArrayList<>();
+            // First shutdown the network connectors to stop accepting new connections
+            for (Connector connector : _connectors)
+                futures.add(connector.shutdown());
+            // then shutdown all graceful handlers 
+            doShutdown(futures);
         }
-
-        // Cancel any shutdowns not done
-        for (Future<Void> future: futures)
-            if (!future.isDone())
-                future.cancel(true);
-
+        catch(Throwable e)
+        {
+            mex.add(e);
+        }
+        
         // Now stop the connectors (this will close existing connections)
         for (Connector connector : _connectors)
         {
@@ -593,7 +531,7 @@ public class Server extends HandlerWrapper implements Attributes
             // this is a dispatch with a path
             ServletContext context=event.getServletContext();
             String query=baseRequest.getQueryString();
-            baseRequest.setURIPathQuery(URIUtil.addPaths(context==null?null:URIUtil.encodePath(context.getContextPath()), path));
+            baseRequest.setURIPathQuery(URIUtil.addEncodedPaths(context==null?null:URIUtil.encodePath(context.getContextPath()), path));
             HttpURI uri = baseRequest.getHttpURI();
             baseRequest.setPathInfo(uri.getDecodedPath());
             if (uri.getQuery()!=null)
@@ -689,6 +627,7 @@ public class Server extends HandlerWrapper implements Attributes
     @Override
     public void setAttribute(String name, Object attribute)
     {
+        // TODO this is a crude way to get attribute values managed by JMX.
         Object old=_attributes.getAttribute(name);
         updateBean(old,attribute);        
         _attributes.setAttribute(name, attribute);
@@ -744,14 +683,14 @@ public class Server extends HandlerWrapper implements Attributes
     @Override
     public String toString()
     {
-        return this.getClass().getName()+"@"+Integer.toHexString(hashCode());
+        return String.format("%s[%s]", super.toString(), getVersion());
     }
 
     /* ------------------------------------------------------------ */
     @Override
     public void dump(Appendable out,String indent) throws IOException
     {
-        dumpBeans(out,indent,Collections.singleton(new ClassLoaderDump(this.getClass().getClassLoader())));
+        dumpObjects(out,indent,new ClassLoaderDump(this.getClass().getClassLoader()),_attributes);
     }
 
     /* ------------------------------------------------------------ */

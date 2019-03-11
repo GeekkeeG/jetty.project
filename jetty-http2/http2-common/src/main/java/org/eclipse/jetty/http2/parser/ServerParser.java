@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -156,6 +156,26 @@ public class ServerParser extends Parser
             @Override
             public void onPreface()
             {
+            }
+        }
+
+        public static class Wrapper extends Parser.Listener.Wrapper implements Listener
+        {
+            public Wrapper(ServerParser.Listener listener)
+            {
+                super(listener);
+            }
+
+            @Override
+            public ServerParser.Listener getParserListener()
+            {
+                return (Listener)super.getParserListener();
+            }
+
+            @Override
+            public void onPreface()
+            {
+                getParserListener().onPreface();
             }
         }
     }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -41,18 +41,15 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.toolchain.test.TestTracker;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class DirectHTTP2OverTLSTest
 {
-    @Rule
-    public TestTracker tracker = new TestTracker();
     private Server server;
     private ServerConnector connector;
     private HttpClient client;
@@ -84,12 +81,14 @@ public class DirectHTTP2OverTLSTest
         clientThreads.setName("client");
         HttpClientTransportOverHTTP2 transport = new HttpClientTransportOverHTTP2(new HTTP2Client());
         transport.setUseALPN(false);
-        client = new HttpClient(transport, newSslContextFactory());
+        SslContextFactory sslContextFactory = newSslContextFactory();
+        sslContextFactory.setEndpointIdentificationAlgorithm(null);
+        client = new HttpClient(transport, sslContextFactory);
         client.setExecutor(clientThreads);
         client.start();
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         if (client != null)
@@ -127,6 +126,6 @@ public class DirectHTTP2OverTLSTest
                 .timeout(5, TimeUnit.SECONDS)
                 .send();
 
-        Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+        assertEquals(HttpStatus.OK_200, response.getStatus());
     }
 }

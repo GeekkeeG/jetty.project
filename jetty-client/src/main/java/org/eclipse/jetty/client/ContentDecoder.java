@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -34,6 +34,15 @@ public interface ContentDecoder
      * @return a buffer containing decoded bytes, if any
      */
     public abstract ByteBuffer decode(ByteBuffer buffer);
+
+    /**
+     * <p>Releases the ByteBuffer returned by {@link #decode(ByteBuffer)}.</p>
+     *
+     * @param decoded the ByteBuffer returned by {@link #decode(ByteBuffer)}
+     */
+    public default void release(ByteBuffer decoded)
+    {
+    }
 
     /**
      * Factory for {@link ContentDecoder}s; subclasses must implement {@link #newContentDecoder()}.

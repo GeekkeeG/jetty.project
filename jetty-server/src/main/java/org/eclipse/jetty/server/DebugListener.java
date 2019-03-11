@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -42,6 +42,7 @@ import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.Name;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
+import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
@@ -127,12 +128,16 @@ public class DebugListener extends AbstractLifeCycle implements ServletContextLi
         if (_dumpContext)
         {
             if (_out==null)
+            {
                 handler.dumpStdErr();
+                System.err.println(Dumpable.KEY);
+            }
             else
             {
                 try
                 {
                     handler.dump(_out);
+                    _out.println(Dumpable.KEY);
                 }
                 catch(Exception e)
                 {

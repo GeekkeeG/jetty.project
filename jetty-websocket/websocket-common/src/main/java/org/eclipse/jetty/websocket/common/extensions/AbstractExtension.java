@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,14 +18,10 @@
 
 package org.eclipse.jetty.websocket.common.extensions;
 
-import java.io.IOException;
-
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
-import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.websocket.api.BatchMode;
@@ -40,7 +36,7 @@ import org.eclipse.jetty.websocket.common.LogicalConnection;
 import org.eclipse.jetty.websocket.common.scopes.WebSocketContainerScope;
 
 @ManagedObject("Abstract Extension")
-public abstract class AbstractExtension extends AbstractLifeCycle implements Dumpable, Extension
+public abstract class AbstractExtension extends AbstractLifeCycle implements Extension
 {
     private final Logger log;
     private WebSocketPolicy policy;
@@ -53,26 +49,6 @@ public abstract class AbstractExtension extends AbstractLifeCycle implements Dum
     public AbstractExtension()
     {
         log = Log.getLogger(this.getClass());
-    }
-    
-    @Override
-    public String dump()
-    {
-        return ContainerLifeCycle.dump(this);
-    }
-
-    public void dump(Appendable out, String indent) throws IOException
-    {
-        // incoming
-        dumpWithHeading(out, indent, "incoming", this.nextIncoming);
-        dumpWithHeading(out, indent, "outgoing", this.nextOutgoing);
-    }
-
-    protected void dumpWithHeading(Appendable out, String indent, String heading, Object bean) throws IOException
-    {
-        out.append(indent).append(" +- ");
-        out.append(heading).append(" : ");
-        out.append(bean.toString());
     }
     
     @Deprecated
@@ -126,12 +102,6 @@ public abstract class AbstractExtension extends AbstractLifeCycle implements Dum
         return policy;
     }
 
-    @Override
-    public void incomingError(Throwable e)
-    {
-        nextIncomingError(e);
-    }
-
     /**
      * Used to indicate that the extension makes use of the RSV1 bit of the base websocket framing.
      * <p>
@@ -171,11 +141,6 @@ public abstract class AbstractExtension extends AbstractLifeCycle implements Dum
         return false;
     }
 
-    protected void nextIncomingError(Throwable e)
-    {
-        this.nextIncoming.incomingError(e);
-    }
-
     protected void nextIncomingFrame(Frame frame)
     {
         log.debug("nextIncomingFrame({})",frame);
@@ -184,8 +149,18 @@ public abstract class AbstractExtension extends AbstractLifeCycle implements Dum
 
     protected void nextOutgoingFrame(Frame frame, WriteCallback callback, BatchMode batchMode)
     {
-        log.debug("nextOutgoingFrame({})",frame);
-        this.nextOutgoing.outgoingFrame(frame,callback, batchMode);
+        try
+        {
+            log.debug("nextOutgoingFrame({})", frame);
+            this.nextOutgoing.outgoingFrame(frame, callback, batchMode);
+        }
+        catch (Throwable t)
+        {
+            if (callback != null)
+                callback.writeFailed(t);
+            else
+                log.warn(t);
+        }
     }
 
     public void setBufferPool(ByteBufferPool bufferPool)

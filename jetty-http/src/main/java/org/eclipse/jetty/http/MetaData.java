@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -61,6 +61,7 @@ public class MetaData implements Iterable<HttpField>
 
     /**
      * @deprecated use {@link #getHttpVersion()} instead
+     * @return the HTTP version of this MetaData object
      */
     @Deprecated
     public HttpVersion getVersion()
@@ -122,6 +123,7 @@ public class MetaData implements Iterable<HttpField>
      * @return an iterator over the HTTP fields
      * @see #getFields()
      */
+    @Override
     public Iterator<HttpField> iterator()
     {
         HttpFields fields = getFields();
@@ -161,17 +163,26 @@ public class MetaData implements Iterable<HttpField>
 
         public Request(String method, HttpScheme scheme, HostPortHttpField hostPort, String uri, HttpVersion version, HttpFields fields)
         {
-            this(method, new HttpURI(scheme == null ? null : scheme.asString(), hostPort.getHost(), hostPort.getPort(), uri), version, fields);
+            this(method, new HttpURI(scheme == null ? null : scheme.asString(), 
+                hostPort==null?null:hostPort.getHost(),
+                hostPort==null?-1:hostPort.getPort(),
+                uri), version, fields);
         }
 
         public Request(String method, HttpScheme scheme, HostPortHttpField hostPort, String uri, HttpVersion version, HttpFields fields, long contentLength)
         {
-            this(method, new HttpURI(scheme == null ? null : scheme.asString(), hostPort.getHost(), hostPort.getPort(), uri), version, fields, contentLength);
+            this(method, new HttpURI(scheme==null?null:scheme.asString(), 
+                hostPort==null?null:hostPort.getHost(),
+                hostPort==null?-1:hostPort.getPort(), 
+                uri), version, fields, contentLength);
         }
 
         public Request(String method, String scheme, HostPortHttpField hostPort, String uri, HttpVersion version, HttpFields fields, long contentLength)
         {
-            this(method, new HttpURI(scheme, hostPort.getHost(), hostPort.getPort(), uri), version, fields, contentLength);
+            this(method, new HttpURI(scheme,
+                hostPort==null?null:hostPort.getHost(),
+                hostPort==null?-1:hostPort.getPort(),
+                uri), version, fields, contentLength);
         }
 
         public Request(Request request)
@@ -179,6 +190,7 @@ public class MetaData implements Iterable<HttpField>
             this(request.getMethod(),new HttpURI(request.getURI()), request.getHttpVersion(), new HttpFields(request.getFields()), request.getContentLength());
         }
 
+        @Override
         public void recycle()
         {
             super.recycle();

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -91,15 +91,15 @@ public class ResourceHandler extends HandlerWrapper implements ResourceFactory,W
         if (_welcomes == null)
             return null;
 
-        String welcome_servlet = null;
         for (int i = 0; i < _welcomes.length; i++)
         {
             String welcome_in_context = URIUtil.addPaths(pathInContext,_welcomes[i]);
             Resource welcome = getResource(welcome_in_context);
             if (welcome != null && welcome.exists())
-                return _welcomes[i];
+                return welcome_in_context;
         }
-        return welcome_servlet;
+        // not found
+        return null;
     }
 
     
@@ -109,7 +109,8 @@ public class ResourceHandler extends HandlerWrapper implements ResourceFactory,W
     {
         Context scontext = ContextHandler.getCurrentContext();
         _context = (scontext == null?null:scontext.getContextHandler());
-        _mimeTypes = _context == null?new MimeTypes():_context.getMimeTypes();
+        if (_mimeTypes==null)
+            _mimeTypes = _context == null?new MimeTypes():_context.getMimeTypes();
 
         _resourceService.setContentFactory(new ResourceContentFactory(this,_mimeTypes,_resourceService.getPrecompressedFormats()));
         _resourceService.setWelcomeFactory(this);
@@ -268,19 +269,14 @@ public class ResourceHandler extends HandlerWrapper implements ResourceFactory,W
         if (baseRequest.isHandled())
             return;
 
-        if (!HttpMethod.GET.is(request.getMethod()))
+        if (!HttpMethod.GET.is(request.getMethod()) && !HttpMethod.HEAD.is(request.getMethod()))
         {
-            if (!HttpMethod.HEAD.is(request.getMethod()))
-            {
-                // try another handler
-                super.handle(target,baseRequest,request,response);
-                return;
-            }
+            // try another handler
+            super.handle(target,baseRequest,request,response);
+            return;
         }
 
-        _resourceService.doGet(request,response);
-
-        if (response.isCommitted())
+        if (_resourceService.doGet(request,response))
             baseRequest.setHandled(true);
         else
             // no resource - try other handlers

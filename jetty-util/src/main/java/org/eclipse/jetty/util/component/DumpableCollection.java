@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,10 +19,9 @@
 package org.eclipse.jetty.util.component;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
-
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
-import org.eclipse.jetty.util.component.Dumpable;
+import java.util.Collections;
 
 public class DumpableCollection implements Dumpable
 {
@@ -35,17 +34,26 @@ public class DumpableCollection implements Dumpable
         _collection=collection;
     }
 
+    public static DumpableCollection fromArray(String name, Object[] array)
+    {
+        return new DumpableCollection(name,array==null?Collections.emptyList():Arrays.asList(array));
+    }
+
+    public static DumpableCollection from(String name, Object... items)
+    {
+        return new DumpableCollection(name,items==null?Collections.emptyList():Arrays.asList(items));
+    }
+
     @Override
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
 
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        out.append(_name).append("\n");
-        if (_collection!=null)
-            ContainerLifeCycle.dump(out,indent,_collection);
+        Object[] array = _collection.toArray();
+        Dumpable.dumpObjects(out,indent,_name + " size="+array.length, array);
     }
 }

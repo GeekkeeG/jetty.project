@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -164,7 +164,8 @@ public class HttpURI
         _host=host;
         _port=port;
 
-        parse(State.PATH,pathQuery,0,pathQuery.length());
+        if (pathQuery!=null)
+            parse(State.PATH,pathQuery,0,pathQuery.length());
         
     }
 
@@ -610,7 +611,7 @@ public class HttpURI
     /* ------------------------------------------------------------ */
     public void decodeQueryTo(MultiMap<String> parameters)
     {
-        if (_query==_fragment)
+        if (_query==null)
             return;
         UrlEncoded.decodeUtf8To(_query,parameters);
     }
@@ -624,7 +625,7 @@ public class HttpURI
     /* ------------------------------------------------------------ */
     public void decodeQueryTo(MultiMap<String> parameters, Charset encoding) throws UnsupportedEncodingException
     {
-        if (_query==_fragment)
+        if (_query==null)
             return;
 
         if (encoding==null || StandardCharsets.UTF_8.equals(encoding))
@@ -695,6 +696,7 @@ public class HttpURI
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public boolean equals(Object o)
     {
         if (o==this)

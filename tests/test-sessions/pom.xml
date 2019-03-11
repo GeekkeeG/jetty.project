@@ -4,7 +4,7 @@
   <parent>
     <groupId>org.eclipse.jetty.tests</groupId>
     <artifactId>tests-parent</artifactId>
-    <version>9.4.4-SNAPSHOT</version>
+    <version>9.4.16-SNAPSHOT</version>
   </parent>
   <artifactId>test-sessions-parent</artifactId>
   <name>Jetty Tests :: Sessions :: Parent</name>
@@ -14,12 +14,12 @@
   </build>
   <modules>
     <module>test-sessions-common</module>
-    <module>test-hash-sessions</module>
     <module>test-file-sessions</module>
     <module>test-jdbc-sessions</module>
     <module>test-mongodb-sessions</module>
     <module>test-infinispan-sessions</module>
     <module>test-gcloud-sessions</module>
     <module>test-memcached-sessions</module>
+    <module>test-hazelcast-sessions</module>
   </modules>
 </project>

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,24 +18,24 @@
 
 package org.eclipse.jetty.websocket.common;
 
-import static org.hamcrest.Matchers.allOf;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.lessThan;
-
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import org.eclipse.jetty.websocket.api.MessageTooLargeException;
-import org.eclipse.jetty.websocket.api.StatusCode;
 import org.eclipse.jetty.websocket.api.WebSocketBehavior;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
 import org.eclipse.jetty.websocket.common.test.IncomingFramesCapture;
 import org.eclipse.jetty.websocket.common.test.UnitParser;
 import org.eclipse.jetty.websocket.common.util.MaskedByteBuffer;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class TextPayloadParserTest
 {
@@ -50,7 +50,7 @@ public class TextPayloadParserTest
         byte utf[] = new byte[2048];
         Arrays.fill(utf,(byte)'a');
 
-        Assert.assertThat("Must be a medium length payload",utf.length,allOf(greaterThan(0x7E),lessThan(0xFFFF)));
+        assertThat("Must be a medium length payload",utf.length,allOf(greaterThan(0x7E),lessThan(0xFFFF)));
 
         ByteBuffer buf = ByteBuffer.allocate(utf.length + 8);
         buf.put((byte)0x81); // text frame, fin = true
@@ -63,19 +63,14 @@ public class TextPayloadParserTest
         UnitParser parser = new UnitParser(policy);
         IncomingFramesCapture capture = new IncomingFramesCapture();
         parser.setIncomingFramesHandler(capture);
-        parser.parseQuietly(buf);
 
-        capture.assertHasErrors(MessageTooLargeException.class,1);
-        capture.assertHasNoFrames();
-
-        MessageTooLargeException err = (MessageTooLargeException)capture.getErrors().poll();
-        Assert.assertThat("Error.closeCode",err.getStatusCode(),is(StatusCode.MESSAGE_TOO_LARGE));
+        assertThrows(MessageTooLargeException.class, ()->parser.parseQuietly(buf));
     }
 
     @Test
     public void testLongMaskedText() throws Exception
     {
-        StringBuffer sb = new StringBuffer(); ;
+        StringBuffer sb = new StringBuffer();
         for (int i = 0; i < 3500; i++)
         {
             sb.append("Hell\uFF4f Big W\uFF4Frld ");
@@ -85,7 +80,7 @@ public class TextPayloadParserTest
         String expectedText = sb.toString();
         byte utf[] = expectedText.getBytes(StandardCharsets.UTF_8);
 
-        Assert.assertThat("Must be a long length payload",utf.length,greaterThan(0xFFFF));
+        assertThat("Must be a long length payload",utf.length,greaterThan(0xFFFF));
 
         ByteBuffer buf = ByteBuffer.allocate(utf.length + 32);
         buf.put((byte)0x81); // text frame, fin = true
@@ -102,10 +97,9 @@ public class TextPayloadParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.TEXT,1);
         WebSocketFrame txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
+        assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
     }
 
     @Test
@@ -121,7 +115,7 @@ public class TextPayloadParserTest
         String expectedText = sb.toString();
         byte utf[] = expectedText.getBytes(StandardCharsets.UTF_8);
 
-        Assert.assertThat("Must be a medium length payload",utf.length,allOf(greaterThan(0x7E),lessThan(0xFFFF)));
+        assertThat("Must be a medium length payload",utf.length,allOf(greaterThan(0x7E),lessThan(0xFFFF)));
 
         ByteBuffer buf = ByteBuffer.allocate(utf.length + 10);
         buf.put((byte)0x81);
@@ -137,10 +131,9 @@ public class TextPayloadParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.TEXT,1);
         WebSocketFrame txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
+        assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
     }
 
     @Test
@@ -174,13 +167,12 @@ public class TextPayloadParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.TEXT,1);
         capture.assertHasFrame(OpCode.CONTINUATION,1);
         WebSocketFrame txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame[0].data",txt.getPayloadAsUTF8(),is(part1));
+        assertThat("TextFrame[0].data",txt.getPayloadAsUTF8(),is(part1));
         txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame[1].data",txt.getPayloadAsUTF8(),is(part2));
+        assertThat("TextFrame[1].data",txt.getPayloadAsUTF8(),is(part2));
     }
 
     @Test
@@ -202,10 +194,9 @@ public class TextPayloadParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.TEXT,1);
         WebSocketFrame txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
+        assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
     }
 
     @Test
@@ -228,9 +219,8 @@ public class TextPayloadParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.TEXT,1);
         WebSocketFrame txt = capture.getFrames().poll();
-        Assert.assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
+        assertThat("TextFrame.data",txt.getPayloadAsUTF8(),is(expectedText));
     }
 }

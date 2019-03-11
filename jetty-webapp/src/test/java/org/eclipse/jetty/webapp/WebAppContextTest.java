@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,16 +18,22 @@
 
 package org.eclipse.jetty.webapp;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.servlet.GenericServlet;
 import javax.servlet.ServletContext;
@@ -36,22 +42,63 @@ import javax.servlet.ServletContextListener;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
+import javax.servlet.http.HttpSessionEvent;
+import javax.servlet.http.HttpSessionListener;
 
 import org.eclipse.jetty.server.LocalConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.server.handler.HotSwapHandler;
+import org.eclipse.jetty.servlet.ErrorPageErrorHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
+import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.resource.PathResource;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.resource.ResourceCollection;
-import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class WebAppContextTest
 {
+    public class MySessionListener implements HttpSessionListener
+    {
+
+        @Override
+        public void sessionCreated(HttpSessionEvent se)
+        {
+            // TODO Auto-generated method stub
+            
+        }
+
+        @Override
+        public void sessionDestroyed(HttpSessionEvent se)
+        {
+            // TODO Auto-generated method stub
+            
+        }
+        
+    }
+    
+    @Test
+    public void testSessionListeners ()
+    throws Exception
+    {
+        Server server = new Server();
+
+        WebAppContext wac = new WebAppContext();
+
+        wac.setServer(server);
+        server.setHandler(wac);
+        wac.addEventListener(new MySessionListener());
+
+        Collection<MySessionListener> listeners = wac.getSessionHandler().getBeans(org.eclipse.jetty.webapp.WebAppContextTest.MySessionListener.class);
+        assertNotNull(listeners);
+        assertEquals(1, listeners.size());
+    }
+    
+    
+    
     @Test
     public void testConfigurationClassesFromDefault ()
     {
@@ -151,12 +198,12 @@ public class WebAppContextTest
         server.start();
 
         // context A should be able to get both A and B servlet contexts
-        Assert.assertNotNull(contextA.getServletHandler().getServletContext().getContext("/A/s"));
-        Assert.assertNotNull(contextA.getServletHandler().getServletContext().getContext("/B/s"));
+        assertNotNull(contextA.getServletHandler().getServletContext().getContext("/A/s"));
+        assertNotNull(contextA.getServletHandler().getServletContext().getContext("/B/s"));
 
         // context B has a contextWhiteList set and should only be able to get ones that are approved
-        Assert.assertNull(contextB.getServletHandler().getServletContext().getContext("/A/s"));
-        Assert.assertNotNull(contextB.getServletHandler().getServletContext().getContext("/B/s"));
+        assertNull(contextB.getServletHandler().getServletContext().getContext("/A/s"));
+        assertNotNull(contextB.getServletHandler().getServletContext().getContext("/B/s"));
     }
 
 
@@ -217,8 +264,8 @@ public class WebAppContextTest
         server.start();
         try
         {
-            String response = connector.getResponses("GET http://localhost:8080 HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n");
-            Assert.assertTrue(response.indexOf("200 OK")>=0);
+            String response = connector.getResponse("GET http://localhost:8080 HTTP/1.1\r\nHost: localhost:8080\r\nConnection: close\r\n\r\n");
+            assertTrue(response.indexOf("200 OK")>=0);
         }
         finally
         {
@@ -226,6 +273,34 @@ public class WebAppContextTest
         }
     }
     
+    @Test
+    public void testNullSessionAndSecurityHandler() throws Exception
+    {
+        Server server = new Server(0);
+        HandlerList handlers = new HandlerList();
+        ContextHandlerCollection contexts = new ContextHandlerCollection();
+        WebAppContext context = new WebAppContext(null, null, null, null, null, new ErrorPageErrorHandler(), 
+                                                  ServletContextHandler.NO_SESSIONS|ServletContextHandler.NO_SECURITY);
+        context.setContextPath("/");
+        context.setBaseResource(Resource.newResource("./src/test/webapp"));
+        server.setHandler(handlers);
+        handlers.addHandler(contexts);
+        contexts.addHandler(context);
+
+        LocalConnector connector = new LocalConnector(server);
+        server.addConnector(connector);
+
+        try
+        {
+            server.start();
+            assertTrue(context.isAvailable());
+        }
+        finally
+        {
+            server.stop();
+        }
+    }
+
     
     class ServletA extends GenericServlet
     {
@@ -345,8 +420,22 @@ public class WebAppContextTest
             }
         }
          
-        Assert.assertThat(history,Matchers.contains("I0","I1","I2","Listener2 init broken","D1","D0","Listener1 destroy broken"));
+        assertThat(history,contains("I0","I1","I2","Listener2 init broken","D1","D0","Listener1 destroy broken"));
         
         server.stop();
     }
+
+    @Test
+    public void ordering() throws Exception
+    {
+        Path testWebappDir = MavenTestingUtils.getProjectDirPath("src/test/webapp");
+        Resource webapp = new PathResource(testWebappDir);
+        WebAppContext context = new WebAppContext();
+        context.setBaseResource(webapp);
+        context.setContextPath("/test");
+        new WebInfConfiguration().preConfigure(context);
+        assertEquals(Arrays.asList("acme.jar", "alpha.jar", "omega.jar"),
+            context.getMetaData().getWebInfJars().stream().map(r -> r.getURI().toString().replaceFirst(".+/", "")).collect(Collectors.toList()));
+    }
+
 }

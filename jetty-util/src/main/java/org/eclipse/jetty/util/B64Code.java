@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -255,12 +255,14 @@ public class B64Code
      * <p>Unlike {@link #decode(char[])}, extra whitespace is ignored.
      * @param encoded String to decode.
      * @param charEncoding String representing the character encoding
-     *        used to map the decoded bytes into a String.
+     *        used to map the decoded bytes into a String. If null
+     *        the platforms default charset is used.
      * @return String decoded byte array.
      * @throws UnsupportedCharsetException if the encoding is not supported
      * @throws IllegalArgumentException if the input is not a valid
      *         B64 encoding.
      */
+    @SuppressWarnings("DefaultCharset")
     public static String decode(String encoded,String charEncoding)
     {
         byte[] decoded=decode(encoded);
@@ -274,11 +276,13 @@ public class B64Code
      * <p>Unlike {@link #decode(char[])}, extra whitespace is ignored.
      * @param encoded String to decode.
      * @param charEncoding Character encoding
-     *        used to map the decoded bytes into a String.
+     *        used to map the decoded bytes into a String. If null
+     *        the platforms default charset is used.
      * @return String decoded byte array.
      * @throws IllegalArgumentException if the input is not a valid
      *         B64 encoding.
      */
+    @SuppressWarnings("DefaultCharset")
     public static String decode(String encoded, Charset charEncoding)
     {
         byte[] decoded=decode(encoded);

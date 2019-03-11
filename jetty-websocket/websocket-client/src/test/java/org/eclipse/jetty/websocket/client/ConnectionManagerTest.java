@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,30 +18,26 @@
 
 package org.eclipse.jetty.websocket.client;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-import org.eclipse.jetty.toolchain.test.TestTracker;
 import org.eclipse.jetty.websocket.client.io.ConnectionManager;
-import org.junit.Assert;
-import org.junit.Rule;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class ConnectionManagerTest
 {
-    @Rule
-    public TestTracker tt = new TestTracker();
-
     private void assertToSocketAddress(String uriStr, String expectedHost, int expectedPort) throws URISyntaxException
     {
         URI uri = new URI(uriStr);
 
         InetSocketAddress addr = ConnectionManager.toSocketAddress(uri);
-        Assert.assertThat("URI (" + uri + ").host",addr.getHostName(),is(expectedHost));
-        Assert.assertThat("URI (" + uri + ").port",addr.getPort(),is(expectedPort));
+        assertThat("URI (" + uri + ").host",addr.getHostName(),is(expectedHost));
+        assertThat("URI (" + uri + ").port",addr.getPort(),is(expectedPort));
     }
 
     @Test

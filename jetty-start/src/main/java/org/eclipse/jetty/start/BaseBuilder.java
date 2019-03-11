@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,7 +20,6 @@ package org.eclipse.jetty.start;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,12 +29,11 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.eclipse.jetty.start.Props.Prop;
 import org.eclipse.jetty.start.builders.StartDirBuilder;
 import org.eclipse.jetty.start.builders.StartIniBuilder;
 import org.eclipse.jetty.start.fileinits.BaseHomeFileInitializer;
-import org.eclipse.jetty.start.fileinits.MavenLocalRepoFileInitializer;
 import org.eclipse.jetty.start.fileinits.LocalFileInitializer;
+import org.eclipse.jetty.start.fileinits.MavenLocalRepoFileInitializer;
 import org.eclipse.jetty.start.fileinits.TestFileInitializer;
 import org.eclipse.jetty.start.fileinits.UriFileInitializer;
 
@@ -93,7 +91,9 @@ public class BaseBuilder
             if (localRepoDir != null)
             {
                 // Use provided local repo directory
-                fileInitializers.add(new MavenLocalRepoFileInitializer(baseHome,localRepoDir,args.getMavenLocalRepoDir()==null));
+                fileInitializers.add(new MavenLocalRepoFileInitializer(baseHome, localRepoDir,
+                                                                       args.getMavenLocalRepoDir()==null,
+                                                                       startArgs.getMavenBaseUri()));
             }
             else
             {
@@ -207,7 +207,7 @@ public class BaseBuilder
                     } 
                     else 
                     {
-                        // if (explictly added and ini file modified)
+                        // if (explicitly added and ini file modified)
                         if (startArgs.getStartModules().contains(module.getName()))
                         {
                             ini=builder.get().addModule(module, startArgs.getProperties());
@@ -246,7 +246,7 @@ public class BaseBuilder
 
         files.addAll(startArgs.getFiles());
         if (!files.isEmpty() && processFileResources(files))
-            modified.set(Boolean.TRUE);
+            modified.set(true);
         
         return modified.get();
     }
@@ -312,7 +312,7 @@ public class BaseBuilder
 
         boolean dirty = false;
 
-        List<String> failures = new ArrayList<String>();
+        List<String> failures = new ArrayList<>();
 
         for (FileArg arg : files)
         {

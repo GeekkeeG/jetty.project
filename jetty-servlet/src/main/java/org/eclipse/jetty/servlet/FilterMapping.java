@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,9 @@
 package org.eclipse.jetty.servlet;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.stream.Collectors;
 
 import javax.servlet.DispatcherType;
 
@@ -27,7 +29,6 @@ import org.eclipse.jetty.http.PathMap;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.component.Dumpable;
 
 @ManagedObject("Filter Mappings")
@@ -86,11 +87,31 @@ public class FilterMapping implements Dumpable
         throw new IllegalArgumentException(type.toString());
     }
 
+    /* ------------------------------------------------------------ */
+    /** Dispatch type from name
+     * @param type the dispatcher type
+     * @return the type constant ({@link #REQUEST}, {@link #ASYNC}, {@link #FORWARD}, {@link #INCLUDE}, or {@link #ERROR})
+     */
+    public static DispatcherType dispatch(int type)
+    {
+        switch(type)
+        {
+            case REQUEST:
+                return DispatcherType.REQUEST;
+            case ASYNC:
+                return DispatcherType.ASYNC;
+            case FORWARD:
+                return DispatcherType.FORWARD;
+            case INCLUDE:
+                return DispatcherType.INCLUDE;
+            case ERROR:
+                return DispatcherType.ERROR;
+        }
+        throw new IllegalArgumentException(Integer.toString(type));
+    }
 
     /* ------------------------------------------------------------ */
     /* ------------------------------------------------------------ */
-
-
     private int _dispatches=DEFAULT;
     private String _filterName;
     private transient FilterHolder _holder;
@@ -122,7 +143,7 @@ public class FilterMapping implements Dumpable
     /* ------------------------------------------------------------ */
     /** Check if this filter applies to a particular dispatch type.
      * @param type The type of request:
-     *      {@link Handler#REQUEST}, {@link Handler#FORWARD}, {@link Handler#INCLUDE} or {@link Handler#ERROR}.
+     *      {@link #REQUEST}, {@link #FORWARD}, {@link #INCLUDE} or {@link #ERROR}.
      * @return <code>true</code> if this filter applies
      */
     boolean appliesTo(int type)
@@ -291,24 +312,27 @@ public class FilterMapping implements Dumpable
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public String toString()
     {
         return
-        TypeUtil.asList(_pathSpecs)+"/"+
-        TypeUtil.asList(_servletNames)+"=="+
-        _dispatches+"=>"+
+            TypeUtil.asList(_pathSpecs)+"/"+
+            TypeUtil.asList(_servletNames)+"/"+
+            Arrays.stream(DispatcherType.values()).filter(this::appliesTo).collect(Collectors.toSet())+"=>"+
         _filterName;
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void dump(Appendable out, String indent) throws IOException
     {
         out.append(String.valueOf(this)).append("\n");
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -61,11 +61,13 @@ public class GlobalWebappConfigBinding implements AppLifeCycle.Binding
         this._jettyXml = jettyXml;
     }
 
+    @Override
     public String[] getBindingTargets()
     {
         return new String[]  { "deploying" };
     }
 
+    @Override
     public void processBinding(Node node, App app) throws Exception
     {
         ContextHandler handler = app.getContextHandler();
@@ -93,15 +95,8 @@ public class GlobalWebappConfigBinding implements AppLifeCycle.Binding
             if (globalContextSettings.exists())
             {
                 XmlConfiguration jettyXmlConfig = new XmlConfiguration(globalContextSettings.getInputStream());
-
                 Resource resource = Resource.newResource(app.getOriginId());
-                File file = resource.getFile();
-                jettyXmlConfig.getIdMap().put("Server",app.getDeploymentManager().getServer());
-                jettyXmlConfig.getProperties().put("jetty.home",System.getProperty("jetty.home","."));
-                jettyXmlConfig.getProperties().put("jetty.base",System.getProperty("jetty.base","."));
-                jettyXmlConfig.getProperties().put("jetty.webapp",file.getCanonicalPath());
-                jettyXmlConfig.getProperties().put("jetty.webapps",file.getParentFile().getCanonicalPath());
-                
+                app.getDeploymentManager().scope(jettyXmlConfig,resource);
                 jettyXmlConfig.configure(context);
             }
             else

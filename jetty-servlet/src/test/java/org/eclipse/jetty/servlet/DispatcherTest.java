@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,13 @@
 
 package org.eclipse.jetty.servlet;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -59,10 +61,11 @@ import org.eclipse.jetty.server.handler.ResourceHandler;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.UrlEncoded;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.log.StacklessLogging;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class DispatcherTest
 {
@@ -72,7 +75,7 @@ public class DispatcherTest
     private ServletContextHandler _contextHandler;
     private ResourceHandler _resourceHandler;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         _server = new Server();
@@ -96,7 +99,7 @@ public class DispatcherTest
         _server.start();
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         _server.stop();
@@ -115,7 +118,7 @@ public class DispatcherTest
             "Content-Length: 0\r\n"+
             "\r\n";
 
-        String responses = _connector.getResponses("GET /context/ForwardServlet?do=assertforward&do=more&test=1 HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/ForwardServlet?do=assertforward&do=more&test=1 HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
@@ -131,7 +134,7 @@ public class DispatcherTest
             "Content-Type: text/html\r\n"+
             "Content-Length: 0\r\n"+
             "\r\n";
-        String responses = _connector.getResponses("GET /context/ForwardServlet?do=assertforward&foreign=%d2%e5%ec%ef%e5%f0%e0%f2%f3%f0%e0&test=1 HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/ForwardServlet?do=assertforward&foreign=%d2%e5%ec%ef%e5%f0%e0%f2%f3%f0%e0&test=1 HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
@@ -152,11 +155,47 @@ public class DispatcherTest
             "/x x\r\n"+
             "/context/EchoURI/x%20x;a=1\r\n";
 
-        String responses = _connector.getResponses("GET /context/ForwardServlet;ignore=true?do=req.echo&uri=EchoURI%2Fx%2520x%3Ba=1%3Fb=2 HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/ForwardServlet;ignore=true?do=req.echo&uri=EchoURI%2Fx%2520x%3Ba=1%3Fb=2 HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
 
+    @Test
+    public void testForwardWithBadParams() throws Exception
+    {
+        try(StacklessLogging nostack = new StacklessLogging(ServletHandler.class))
+        {
+            Log.getLogger(ServletHandler.class).info("Expect Not valid UTF8 warnings...");
+            _contextHandler.addServlet(AlwaysForwardServlet.class, "/forward/*");
+            _contextHandler.addServlet(EchoServlet.class, "/echo/*");
+
+            String response;
+
+            response = _connector.getResponse("GET /context/forward/?echo=allgood HTTP/1.0\n\n");
+            assertThat(response,containsString(" 200 OK"));
+            assertThat(response,containsString("allgood"));
+            
+            response = _connector.getResponse("GET /context/forward/params?echo=allgood HTTP/1.0\n\n");
+            assertThat(response,containsString(" 200 OK"));
+            assertThat(response,containsString("allgood"));
+            assertThat(response,containsString("forward"));
+            
+            response = _connector.getResponse("GET /context/forward/badparams?echo=badparams HTTP/1.0\n\n");
+            assertThat(response,containsString(" 500 "));
+
+            response = _connector.getResponse("GET /context/forward/?echo=badclient&bad=%88%A4 HTTP/1.0\n\n");
+            assertThat(response,containsString(" 400 "));
+
+            response = _connector.getResponse("GET /context/forward/params?echo=badclient&bad=%88%A4 HTTP/1.0\n\n");
+            assertThat(response,containsString(" 400 "));
+
+            response = _connector.getResponse("GET /context/forward/badparams?echo=badclientandparam&bad=%88%A4 HTTP/1.0\n\n");
+            assertThat(response,containsString(" 500 "));
+        }
+    }
+
+    
+    
     @Test
     public void testInclude() throws Exception
     {
@@ -167,7 +206,7 @@ public class DispatcherTest
             "HTTP/1.1 200 OK\r\n"+
             "\r\n";
 
-        String responses = _connector.getResponses("GET /context/IncludeServlet?do=assertinclude&do=more&test=1 HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/IncludeServlet?do=assertinclude&do=more&test=1 HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
@@ -183,7 +222,7 @@ public class DispatcherTest
             "HTTP/1.1 200 OK\r\n"+
             "\r\n";
 
-        String responses = _connector.getResponses("GET /context/ForwardServlet/forwardpath?do=include HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/ForwardServlet/forwardpath?do=include HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
@@ -199,7 +238,7 @@ public class DispatcherTest
             "HTTP/1.1 200 OK\r\n"+
             "\r\n";
 
-        String responses = _connector.getResponses("GET /context/IncludeServlet/includepath?do=forward HTTP/1.0\n\n");
+        String responses = _connector.getResponse("GET /context/IncludeServlet/includepath?do=forward HTTP/1.0\n\n");
 
         assertEquals(expected, responses);
     }
@@ -216,7 +255,7 @@ public class DispatcherTest
             "\r\n"+
             "Roger That!";
 
-        String responses = _connector.getResponses("GET /context/dispatch/test?forward=/roger/that HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/dispatch/test?forward=/roger/that HTTP/1.0\n" + "Host: localhost\n\n");
 
         assertEquals(expected, responses);
     }
@@ -229,7 +268,7 @@ public class DispatcherTest
 
         String requests="GET /context/dispatch/test?forward=/%2e%2e/roger/that HTTP/1.0\n" + "Host: localhost\n\n";
 
-        String responses = _connector.getResponses(requests);
+        String responses = _connector.getResponse(requests);
 
         assertThat(responses,startsWith("HTTP/1.1 404 "));
     }
@@ -242,7 +281,7 @@ public class DispatcherTest
 
         String requests="GET /context/dispatch/test?forward=/%252e%252e/roger/that HTTP/1.0\n" + "Host: localhost\n\n";
 
-        String responses = _connector.getResponses(requests);
+        String responses = _connector.getResponse(requests);
 
         assertThat(responses,startsWith("HTTP/1.1 404 "));
     }
@@ -259,7 +298,7 @@ public class DispatcherTest
             "\r\n"+
             "Roger That!";
 
-        String responses = _connector.getResponses("GET /context/dispatch/test?include=/roger/that HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/dispatch/test?include=/roger/that HTTP/1.0\n" + "Host: localhost\n\n");
 
         assertEquals(expected, responses);
     }
@@ -267,9 +306,9 @@ public class DispatcherTest
     @Test
     public void testWorkingResourceHandler() throws Exception
     {
-        String responses = _connector.getResponses("GET /resource/content.txt HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /resource/content.txt HTTP/1.0\n" + "Host: localhost\n\n");
 
-        assertTrue(responses.contains("content goes here")); // from inside the context.txt file
+        assertThat(responses, containsString("content goes here")); // from inside the context.txt file
     }
 
     @Test
@@ -277,12 +316,12 @@ public class DispatcherTest
     {
         _contextHandler.addServlet(DispatchToResourceServlet.class, "/resourceServlet/*");
 
-        String responses = _connector.getResponses("GET /context/resourceServlet/content.txt?do=include HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/resourceServlet/content.txt?do=include HTTP/1.0\n" + "Host: localhost\n\n");
 
         // from inside the context.txt file
-        Assert.assertNotNull(responses);
+        assertNotNull(responses);
 
-        assertTrue(responses.contains("content goes here"));
+        assertThat(responses, containsString("content goes here"));
     }
 
     @Test
@@ -290,10 +329,10 @@ public class DispatcherTest
     {
         _contextHandler.addServlet(DispatchToResourceServlet.class, "/resourceServlet/*");
 
-        String responses = _connector.getResponses("GET /context/resourceServlet/content.txt?do=forward HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/resourceServlet/content.txt?do=forward HTTP/1.0\n" + "Host: localhost\n\n");
 
         // from inside the context.txt file
-        assertTrue(responses.contains("content goes here"));
+        assertThat(responses, containsString("content goes here"));
     }
 
     @Test
@@ -301,10 +340,10 @@ public class DispatcherTest
     {
         _contextHandler.addServlet(DispatchToResourceServlet.class, "/resourceServlet/*");
 
-        String responses = _connector.getResponses("GET /context/resourceServlet/content.txt?do=include&wrapped=true HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/resourceServlet/content.txt?do=include&wrapped=true HTTP/1.0\n" + "Host: localhost\n\n");
 
         // from inside the context.txt file
-        assertTrue(responses.contains("content goes here"));
+        assertThat(responses, containsString("content goes here"));
     }
 
     @Test
@@ -312,10 +351,10 @@ public class DispatcherTest
     {
         _contextHandler.addServlet(DispatchToResourceServlet.class, "/resourceServlet/*");
 
-        String responses = _connector.getResponses("GET /context/resourceServlet/content.txt?do=forward&wrapped=true HTTP/1.0\n" + "Host: localhost\n\n");
+        String responses = _connector.getResponse("GET /context/resourceServlet/content.txt?do=forward&wrapped=true HTTP/1.0\n" + "Host: localhost\n\n");
 
         // from inside the context.txt file
-        assertTrue(responses.contains("content goes here"));
+        assertThat(responses, containsString("content goes here"));
     }
 
     @Test
@@ -326,20 +365,21 @@ public class DispatcherTest
         _contextHandler.addServlet(EchoServlet.class, "/echo/*");
         _contextHandler.addFilter(ForwardFilter.class, "/*", EnumSet.of(DispatcherType.REQUEST));
 
-        String rogerResponse = _connector.getResponses("GET /context/ HTTP/1.0\n" + "Host: localhost\n\n");
+        String rogerResponse = _connector.getResponse("GET /context/ HTTP/1.0\n" + "Host: localhost\n\n");
 
-        String echoResponse = _connector.getResponses("GET /context/foo?echo=echoText HTTP/1.0\n" + "Host: localhost\n\n");
+        String echoResponse = _connector.getResponse("GET /context/foo?echo=echoText HTTP/1.0\n" + "Host: localhost\n\n");
 
-        String rechoResponse = _connector.getResponses("GET /context/?echo=echoText HTTP/1.0\n" + "Host: localhost\n\n");
+        String rechoResponse = _connector.getResponse("GET /context/?echo=echoText HTTP/1.0\n" + "Host: localhost\n\n");
 
-        assertTrue(rogerResponse.contains("Roger That!"));
-        assertTrue(echoResponse.contains("echoText"));
-        assertTrue(rechoResponse.contains("txeTohce"));
+        assertThat(rogerResponse, containsString("Roger That!"));
+        assertThat(echoResponse, containsString("echoText"));
+        assertThat(rechoResponse, containsString("txeTohce"));
     }
 
 
     public static class ForwardServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             RequestDispatcher dispatcher = null;
@@ -357,10 +397,25 @@ public class DispatcherTest
             dispatcher.forward(request, response);
         }
     }
+    
+    public static class AlwaysForwardServlet extends HttpServlet implements Servlet
+    {
+        @Override
+        protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
+        {
+            if ("/params".equals(request.getPathInfo()))
+                getServletContext().getRequestDispatcher("/echo?echo=forward").forward(request, response);
+            else if ("/badparams".equals(request.getPathInfo()))
+                getServletContext().getRequestDispatcher("/echo?echo=forward&fbad=%88%A4").forward(request, response);
+            else
+                getServletContext().getRequestDispatcher("/echo").forward(request, response);
+        }
+    }
 
     
     public static class ForwardNonUTF8Servlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             RequestDispatcher dispatcher = null;
@@ -382,11 +437,13 @@ public class DispatcherTest
     {
         ServletContext servletContext;
 
+        @Override
         public void init(FilterConfig filterConfig) throws ServletException
         {
             servletContext = filterConfig.getServletContext().getContext("/context");
         }
 
+        @Override
         public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException
         {
 
@@ -416,6 +473,7 @@ public class DispatcherTest
             }
         }
 
+        @Override
         public void destroy()
         {
 
@@ -479,15 +537,20 @@ public class DispatcherTest
         @Override
         public void service(ServletRequest req, ServletResponse res) throws ServletException, IOException
         {
-            String echoText = req.getParameter("echo");
+            String[] echoText = req.getParameterValues("echo");
 
-            if ( echoText == null )
+            if ( echoText == null || echoText.length==0)
             {
                 throw new ServletException("echo is a required parameter");
             }
+            else if (echoText.length==1)
+            {
+                res.getWriter().print(echoText[0]);
+            }
             else
             {
-                res.getWriter().print(echoText);
+                for (String text:echoText)
+                    res.getWriter().print(text);
             }
         }
     }
@@ -554,6 +617,7 @@ public class DispatcherTest
 
     public static class EchoURIServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             response.setContentType("text/plain");
@@ -567,6 +631,7 @@ public class DispatcherTest
 
     public static class AssertForwardServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             assertEquals( "/context/ForwardServlet", request.getAttribute(Dispatcher.FORWARD_REQUEST_URI));
@@ -596,6 +661,7 @@ public class DispatcherTest
     
     public static class AssertNonUTF8ForwardServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             byte[] cp1251_bytes = TypeUtil.fromHexString("d2e5ecefe5f0e0f2f3f0e0");
@@ -644,6 +710,7 @@ public class DispatcherTest
 
     public static class AssertIncludeServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             assertEquals( "/context/AssertIncludeServlet", request.getAttribute(Dispatcher.INCLUDE_REQUEST_URI));
@@ -671,6 +738,7 @@ public class DispatcherTest
 
     public static class AssertForwardIncludeServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             // include doesn't hide forward
@@ -707,6 +775,7 @@ public class DispatcherTest
 
     public static class AssertIncludeForwardServlet extends HttpServlet implements Servlet
     {
+        @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             // forward hides include

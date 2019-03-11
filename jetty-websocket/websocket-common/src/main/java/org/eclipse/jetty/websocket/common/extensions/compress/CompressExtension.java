@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -149,7 +149,7 @@ public abstract class CompressExtension extends AbstractExtension
 
     protected ByteAccumulator newByteAccumulator()
     {
-        int maxSize = Math.max(getPolicy().getMaxTextMessageSize(),getPolicy().getMaxBinaryMessageBufferSize());
+        int maxSize = Math.max(getPolicy().getMaxTextMessageSize(),getPolicy().getMaxBinaryMessageSize());
         return new ByteAccumulator(maxSize);
     }
 
@@ -264,7 +264,7 @@ public abstract class CompressExtension extends AbstractExtension
 
     private static boolean supplyInput(Inflater inflater, ByteBuffer buf)
     {
-        if (buf.remaining() <= 0)
+        if (buf == null || buf.remaining() <= 0)
         {
             if (LOG.isDebugEnabled())
             {
@@ -304,7 +304,7 @@ public abstract class CompressExtension extends AbstractExtension
 
     private static boolean supplyInput(Deflater deflater, ByteBuffer buf)
     {
-        if (buf.remaining() <= 0)
+        if (buf == null || buf.remaining() <= 0)
         {
             if (LOG.isDebugEnabled())
             {
@@ -457,6 +457,10 @@ public abstract class CompressExtension extends AbstractExtension
             // the heap if the payload is a huge mapped file.
             Frame frame = entry.frame;
             ByteBuffer data = frame.getPayload();
+
+            if(data == null)
+                data = BufferUtil.EMPTY_BUFFER;
+
             int remaining = data.remaining();
             int outputLength = Math.max(256,data.remaining());
             if (LOG.isDebugEnabled())

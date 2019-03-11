@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -237,14 +237,6 @@ public class HttpGenerator
                 if (header==null)
                     return Result.NEED_HEADER;
 
-                // If we have not been told our persistence, set the default
-                if (_persistent==null)
-                {
-                    _persistent=info.getHttpVersion().ordinal() > HttpVersion.HTTP_1_0.ordinal();
-                    if (!_persistent && HttpMethod.CONNECT.is(info.getMethod()))
-                        _persistent=true;
-                }
-
                 // prepare the header
                 int pos=BufferUtil.flipToFill(header);
                 try
@@ -413,25 +405,15 @@ public class HttpGenerator
                 HttpVersion version=info.getHttpVersion();
                 if (version==null)
                     throw new BadMessageException(INTERNAL_SERVER_ERROR_500,"No version");
-                switch(version)
+                
+                if (version==HttpVersion.HTTP_0_9)
                 {
-                    case HTTP_1_0:
-                        if (_persistent==null)
-                            _persistent=Boolean.FALSE;
-                        break;
-                        
-                    case HTTP_1_1:
-                        if (_persistent==null)
-                            _persistent=Boolean.TRUE;
-                        break;
-                        
-                    default:
-                        _persistent = false;
-                        _endOfContent=EndOfContent.EOF_CONTENT;
-                        if (BufferUtil.hasContent(content))
-                            _contentPrepared+=content.remaining();
-                        _state = last?State.COMPLETING:State.COMMITTED;
-                        return Result.FLUSH;
+                    _persistent = false;
+                    _endOfContent=EndOfContent.EOF_CONTENT;
+                    if (BufferUtil.hasContent(content))
+                        _contentPrepared+=content.remaining();
+                    _state = last?State.COMPLETING:State.COMMITTED;
+                    return Result.FLUSH;
                 }
                 
                 // Do we need a response header
@@ -481,7 +463,7 @@ public class HttpGenerator
                 }
                 catch(BufferOverflowException e)
                 {
-                    throw new BadMessageException(INTERNAL_SERVER_ERROR_500,"Request header too large",e);
+                    throw new BadMessageException(INTERNAL_SERVER_ERROR_500,"Response header too large",e);
                 }
                 catch(Exception e)
                 {
@@ -560,10 +542,6 @@ public class HttpGenerator
         for (int f=0;f<n;f++)
         {
             HttpField field = trailer.getField(f);
-            String v = field.getValue();
-            if (v==null || v.length()==0)
-                continue; // rfc7230 does not allow no value
-
             putTo(field,buffer);
         }
 
@@ -662,10 +640,6 @@ public class HttpGenerator
             for (int f=0;f<n;f++)
             {
                 HttpField field = fields.getField(f);
-                String v = field.getValue();
-                if (v==null || v.length()==0)
-                    continue; // rfc7230 does not allow no value
-
                 HttpHeader h = field.getHeader();
                 if (h==null)
                     putTo(field,header);
@@ -710,7 +684,7 @@ public class HttpGenerator
                                 _persistent=false;
                             }
 
-                            if (!http11 && field.contains(HttpHeaderValue.KEEP_ALIVE.asString()))
+                            if (info.getHttpVersion() == HttpVersion.HTTP_1_0 && _persistent==null && field.contains(HttpHeaderValue.KEEP_ALIVE.asString()))
                             {
                                 _persistent=true;
                             }
@@ -742,6 +716,9 @@ public class HttpGenerator
         boolean assumed_content = assumed_content_request || content_type || chunked_hint;
         boolean nocontent_request = request!=null && content_length<=0 && !assumed_content;
 
+        if (_persistent==null)
+            _persistent = http11 || (request!=null && HttpMethod.CONNECT.is(request.getMethod()));        
+        
         // If the message is known not to have content
         if (_noContentResponse || nocontent_request)
         {

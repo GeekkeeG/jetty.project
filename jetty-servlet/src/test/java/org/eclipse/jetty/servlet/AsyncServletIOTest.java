@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,13 +19,15 @@
 package org.eclipse.jetty.servlet;
 
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,6 +42,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.AsyncEvent;
@@ -62,11 +66,11 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 // TODO need  these on HTTP2 as well!
 public class AsyncServletIOTest 
@@ -76,14 +80,19 @@ public class AsyncServletIOTest
     protected AsyncIOServlet2 _servlet2=new AsyncIOServlet2();
     protected AsyncIOServlet3 _servlet3=new AsyncIOServlet3();
     protected AsyncIOServlet4 _servlet4=new AsyncIOServlet4();
+    protected StolenAsyncReadServlet _servletStolenAsyncRead=new StolenAsyncReadServlet();
     protected int _port;
-    protected Server _server = new Server();
+    protected WrappingQTP _wQTP;
+    protected Server _server;
     protected ServletHandler _servletHandler;
     protected ServerConnector _connector;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception
     {
+        _wQTP = new WrappingQTP();
+        _server = new Server(_wQTP);
+        
         HttpConfiguration http_config = new HttpConfiguration();
         http_config.setOutputBufferSize(4096);
         _connector = new ServerConnector(_server,new HttpConnectionFactory(http_config));
@@ -112,6 +121,10 @@ public class AsyncServletIOTest
         holder4.setAsyncSupported(true);
         _servletHandler.addServletWithMapping(holder4,"/path4/*");
         
+        ServletHolder holder5=new ServletHolder(_servletStolenAsyncRead);
+        holder5.setAsyncSupported(true);
+        _servletHandler.addServletWithMapping(holder5,"/stolen/*");
+        
         _server.start();
         _port=_connector.getLocalPort();
 
@@ -120,7 +133,7 @@ public class AsyncServletIOTest
         _read.set(0);
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception
     {
         _server.stop();
@@ -160,7 +173,7 @@ public class AsyncServletIOTest
     public void testBigWrites() throws Exception
     {
         process(102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400,102400);
-        Assert.assertThat("On Write Possible",_owp.get(),greaterThanOrEqualTo(1));
+        assertThat("On Write Possible",_owp.get(),greaterThanOrEqualTo(1));
     }
 
     @Test
@@ -203,7 +216,7 @@ public class AsyncServletIOTest
             // response line
             String line = in.readLine();
             LOG.debug("response-line: "+line);
-            Assert.assertThat(line,startsWith("HTTP/1.1 200 OK"));
+            assertThat(line,startsWith("HTTP/1.1 200 OK"));
             
             // Skip headers
             while (line!=null)
@@ -225,8 +238,8 @@ public class AsyncServletIOTest
             }
         }
 
-        Assert.assertEquals(list.get(0),"data");
-        Assert.assertTrue(_servlet2.completed.await(5, TimeUnit.SECONDS));
+        assertEquals(list.get(0),"data");
+        assertTrue(_servlet2.completed.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -252,7 +265,7 @@ public class AsyncServletIOTest
             // response line
             String line = in.readLine();
             LOG.debug("response-line: "+line);
-            Assert.assertThat(line,startsWith("HTTP/1.1 200 OK"));
+            assertThat(line,startsWith("HTTP/1.1 200 OK"));
             
             // Skip headers
             while (line!=null)
@@ -266,11 +279,11 @@ public class AsyncServletIOTest
             // Get body
             line = in.readLine();
             LOG.debug("body: "+line);
-            Assert.assertEquals("DONE",line);
+            assertEquals("DONE",line);
 
             // The connection should be aborted
             line = in.readLine();
-            Assert.assertNull(line);
+            assertNull(line);
         }
     }
     
@@ -331,7 +344,7 @@ public class AsyncServletIOTest
             // response line
             String line = in.readLine();
             LOG.debug("response-line: "+line);
-            Assert.assertThat(line,startsWith("HTTP/1.1 200 OK"));
+            assertThat(line,startsWith("HTTP/1.1 200 OK"));
             
             // Skip headers
             while (line!=null)
@@ -361,8 +374,8 @@ public class AsyncServletIOTest
             LOG.debug("line:  "+brief(line));
             if ("-".equals(line))
                 continue;
-            assertEquals("Line Length",writes[w],line.length());
-            assertEquals("Line Contents",line.charAt(0),'0'+(w%10));
+            assertEquals(writes[w], line.length(), "Line Length");
+            assertEquals(line.charAt(0), '0'+(w%10), "Line Contents");
             
             w++;
             if (w<writes.length && writes[w]<=0)
@@ -370,7 +383,7 @@ public class AsyncServletIOTest
         }
         
         if (content!=null)
-            Assert.assertEquals("Content Length",content.length,_read.get());
+            assertEquals(content.length, _read.get(), "Content Length");
         
         return list;
     }
@@ -468,7 +481,7 @@ public class AsyncServletIOTest
 
                     while (writes!=null && _w< writes.length)
                     {
-                        int write=Integer.valueOf(writes[_w++]);
+                        int write=Integer.parseInt(writes[_w++]);
                         
                         if (write==0)
                             out.flush();
@@ -624,7 +637,6 @@ public class AsyncServletIOTest
         .append("Content-Length: 20\r\n")
         .append("\r\n")
         .append("12345678\r\n");
-        
         int port=_port;
         List<String> list = new ArrayList<>();
         try (Socket socket = new Socket("localhost",port))
@@ -645,7 +657,7 @@ public class AsyncServletIOTest
             // response line
             String line = in.readLine();
             LOG.debug("response-line: "+line);
-            Assert.assertThat(line,startsWith("HTTP/1.1 200 OK"));
+            assertThat(line,startsWith("HTTP/1.1 200 OK"));
             
             boolean chunked=false;
             // Skip headers
@@ -681,10 +693,10 @@ public class AsyncServletIOTest
             }
 
             LOG.debug("last: "+last);
-            // last non empty line should contain some X's
-            assertThat(last,containsString("X"));
+            
             // last non empty line should not contain end chunk
-            assertThat(last,not(containsString("0")));
+            assertThat(last, notNullValue());
+            assertThat(last.trim(),not(startsWith("0")));
         }
 
         assertTrue(_servlet4.completed.await(5, TimeUnit.SECONDS));
@@ -788,5 +800,179 @@ public class AsyncServletIOTest
         }
     }
     
+
+    @Test
+    public void testStolenAsyncRead() throws Exception
+    {
+        StringBuilder request = new StringBuilder(512);
+        request.append("POST /ctx/stolen/info HTTP/1.1\r\n")
+        .append("Host: localhost\r\n")
+        .append("Content-Type: text/plain\r\n")
+        .append("Content-Length: 2\r\n")
+        .append("\r\n")
+        .append("1");
+        int port=_port;
+        try (Socket socket = new Socket("localhost",port))
+        {
+            socket.setSoTimeout(10000);
+            OutputStream out = socket.getOutputStream();
+            out.write(request.toString().getBytes(ISO_8859_1));
+            out.flush();
+            
+            // wait until server is ready
+            _servletStolenAsyncRead.ready.await();
+            final CountDownLatch wait = new CountDownLatch(1);
+            
+            // Stop any dispatches until we want them
+            UnaryOperator<Runnable> old = _wQTP.wrapper.getAndSet(r->
+                ()->
+                {
+                    try
+                    {
+                        wait.await();
+                        r.run();
+                    }
+                    catch (InterruptedException e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+            );
+
+            // We are an unrelated thread, let's mess with the input stream
+            ServletInputStream sin = _servletStolenAsyncRead.listener.in;
+            sin.setReadListener(_servletStolenAsyncRead.listener);
+            // thread should be dispatched to handle, but held by our wQTP wait.
+            
+            // Let's steal our read
+            assertTrue(sin.isReady());
+            assertThat(sin.read(),Matchers.is((int)'1'));
+            assertFalse(sin.isReady());
+            
+            // let the ODA call go
+            _wQTP.wrapper.set(old);
+            wait.countDown();
+            
+            // ODA should not be called
+            assertFalse(_servletStolenAsyncRead.oda.await(500,TimeUnit.MILLISECONDS));
+
+            // Send some more data
+            out.write((int)'2');
+            out.flush();
+
+            // ODA should now be called!!
+            assertTrue(_servletStolenAsyncRead.oda.await(500,TimeUnit.MILLISECONDS));
+            
+            // We can not read some more
+            assertTrue(sin.isReady());
+            assertThat(sin.read(),Matchers.is((int)'2'));
+
+            // read EOF
+            assertTrue(sin.isReady());
+            assertThat(sin.read(),Matchers.is(-1));
+            
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // response line
+            String line = in.readLine();
+            LOG.debug("response-line: "+line);
+            assertThat(line,startsWith("HTTP/1.1 200 OK"));
+            
+            // Skip headers
+            while (line!=null)
+            {
+                line = in.readLine();
+                LOG.debug("header-line: "+line);
+                if (line.length()==0)
+                    break;
+            }
+        }
+
+        assertTrue(_servletStolenAsyncRead.completed.await(5, TimeUnit.SECONDS));     
+    }
+
+    @SuppressWarnings("serial")
+    public class StolenAsyncReadServlet extends HttpServlet
+    {
+        public CountDownLatch ready = new CountDownLatch(1);
+        public CountDownLatch oda = new CountDownLatch(1);
+        public CountDownLatch completed = new CountDownLatch(1);
+        public volatile StealingListener listener;
+        
+        @Override
+        public void doPost(final HttpServletRequest request, final HttpServletResponse response) throws IOException
+        {
+            listener = new StealingListener(request);
+            ready.countDown();
+        }
+
+        public class StealingListener implements ReadListener, AsyncListener
+        {
+            final HttpServletRequest request;
+            final ServletInputStream in;
+            final AsyncContext asyncContext;
+
+            StealingListener(HttpServletRequest request) throws IOException
+            {
+                asyncContext = request.startAsync();
+                asyncContext.setTimeout(10000L);
+                asyncContext.addListener(this);
+                this.request=request;
+                in = request.getInputStream();
+            }
+
+            @Override
+            public void onDataAvailable()
+            {
+                oda.countDown();
+            }
+
+            @Override
+            public void onAllDataRead() throws IOException
+            {
+                asyncContext.complete();
+            }
+
+            @Override
+            public void onError(final Throwable t)
+            {
+                t.printStackTrace();
+                asyncContext.complete();
+            }
+
+            @Override
+            public void onComplete(final AsyncEvent event)
+            {
+                completed.countDown();
+            }
+
+            @Override
+            public void onTimeout(final AsyncEvent event)
+            {
+                asyncContext.complete();
+            }
+
+            @Override
+            public void onError(final AsyncEvent event)
+            {
+                asyncContext.complete();
+            }
+
+            @Override
+            public void onStartAsync(AsyncEvent event)
+            {
+            }
+        }
+    }
     
+    private class WrappingQTP extends QueuedThreadPool
+    {
+        AtomicReference<UnaryOperator<Runnable>> wrapper = new AtomicReference<>(UnaryOperator.identity());
+        
+        @Override
+        public void execute(Runnable job)
+        {
+            super.execute(wrapper.get().apply(job));
+        }
+    }
 }

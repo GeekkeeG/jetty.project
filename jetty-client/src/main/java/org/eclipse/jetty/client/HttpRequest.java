@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -76,8 +76,9 @@ public class HttpRequest implements Request
     private String query;
     private String method = HttpMethod.GET.asString();
     private HttpVersion version = HttpVersion.HTTP_1_1;
-    private long idleTimeout;
+    private long idleTimeout = -1;
     private long timeout;
+    private long timeoutAt;
     private ContentProvider content;
     private boolean followRedirects;
     private List<HttpCookie> cookies;
@@ -98,7 +99,6 @@ public class HttpRequest implements Request
         extractParams(query);
 
         followRedirects(client.isFollowRedirects());
-        idleTimeout = client.getIdleTimeout();
         HttpField acceptEncodingField = client.getAcceptEncodingField();
         if (acceptEncodingField != null)
             headers.put(acceptEncodingField);
@@ -107,7 +107,7 @@ public class HttpRequest implements Request
             headers.put(userAgentField);
     }
 
-    protected HttpConversation getConversation()
+    public HttpConversation getConversation()
     {
         return conversation;
     }
@@ -203,7 +203,10 @@ public class HttpRequest implements Request
     {
         if (uri == null)
             uri = buildURI(true);
-        return uri == NULL_URI ? null : uri;
+        
+        @SuppressWarnings("ReferenceEquality")
+        boolean isNullURI = (uri == NULL_URI);
+        return isNullURI ? null : uri;
     }
 
     @Override
@@ -677,14 +680,31 @@ public class HttpRequest implements Request
 
         try
         {
-            long timeout = getTimeout();
-            if (timeout <= 0)
-                return listener.get();
+            return listener.get();
+        }
+        catch (ExecutionException x)
+        {            
+            // Previously this method used a timed get on the future, which was in a race
+            // with the timeouts implemented in HttpDestination and HttpConnection. The change to
+            // make those timeouts relative to the timestamp taken in sent() has made that race
+            // less certain, so a timeout could be either a TimeoutException from the get() or
+            // a ExecutionException(TimeoutException) from the HttpDestination/HttpConnection.
+            // We now do not do a timed get and just rely on the HttpDestination/HttpConnection
+            // timeouts.   This has the affect of changing this method from mostly throwing a
+            // TimeoutException to always throwing a ExecutionException(TimeoutException).
+            // Thus for backwards compatibility we unwrap the timeout exception here
+            if (x.getCause() instanceof TimeoutException)
+            {
+                TimeoutException t = (TimeoutException) (x.getCause());
+                abort(t);
+                throw t;
+            }
 
-            return listener.get(timeout, TimeUnit.MILLISECONDS);
+            abort(x);
+            throw x;
         }
         catch (Throwable x)
-        {
+        {   
             // Differently from the Future, the semantic of this method is that if
             // the send() is interrupted or times out, we abort the request.
             abort(x);
@@ -695,34 +715,32 @@ public class HttpRequest implements Request
     @Override
     public void send(Response.CompleteListener listener)
     {
-        TimeoutCompleteListener timeoutListener = null;
-        try
-        {
-            if (getTimeout() > 0)
-            {
-                timeoutListener = new TimeoutCompleteListener(this);
-                timeoutListener.schedule(client.getScheduler());
-                responseListeners.add(timeoutListener);
-            }
-            send(this, listener);
-        }
-        catch (Throwable x)
-        {
-            // Do not leak the scheduler task if we
-            // can't even start sending the request.
-            if (timeoutListener != null)
-                timeoutListener.cancel();
-            throw x;
-        }
+        send(this, listener);
     }
-
+    
     private void send(HttpRequest request, Response.CompleteListener listener)
     {
         if (listener != null)
             responseListeners.add(listener);
+        sent();
         client.send(request, responseListeners);
     }
 
+    void sent()
+    {
+        long timeout = getTimeout();
+        timeoutAt = timeout > 0 ? System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeout) : -1;
+    }
+    
+    /**
+     * @return The nanoTime at which the timeout expires or -1 if there is no timeout.
+     * @see #timeout(long, TimeUnit)
+     */
+    long getTimeoutAt()
+    {
+        return timeoutAt;
+    }
+    
     protected List<Response.ResponseListener> getResponseListeners()
     {
         return responseListeners;

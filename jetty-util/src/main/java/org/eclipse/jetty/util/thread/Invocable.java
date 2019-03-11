@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,13 +18,7 @@
 
 package org.eclipse.jetty.util.thread;
 
-import java.io.Closeable;
 import java.util.concurrent.Callable;
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
-
-import org.eclipse.jetty.util.log.Log;
-import org.eclipse.jetty.util.log.Logger;
 
 /**
  * <p>A task (typically either a {@link Runnable} or {@link Callable}
@@ -48,14 +42,7 @@ public interface Invocable
         BLOCKING, NON_BLOCKING, EITHER
     }
 
-    static ThreadLocal<Boolean> __nonBlocking = new ThreadLocal<Boolean>()
-    {
-        @Override
-        protected Boolean initialValue()
-        {
-            return Boolean.FALSE;
-        }
-    };
+    static ThreadLocal<Boolean> __nonBlocking = new ThreadLocal<>();
 
     /**
      * Test if the current thread has been tagged as non blocking
@@ -64,7 +51,7 @@ public interface Invocable
      */
     public static boolean isNonBlockingInvocation()
     {
-        return __nonBlocking.get();
+        return Boolean.TRUE.equals(__nonBlocking.get());
     }
 
     /**
@@ -74,7 +61,6 @@ public interface Invocable
      */
     public static void invokeNonBlocking(Runnable task)
     {
-        // a Choice exists, so we must indicate NonBlocking
         Boolean was_non_blocking = __nonBlocking.get();
         try
         {
@@ -88,87 +74,9 @@ public interface Invocable
     }
 
     /**
-     * Invoke a task with the calling thread.
-     * If the task is an {@link Invocable} of {@link InvocationType#EITHER}
-     * then it is invoked with {@link #invokeNonBlocking(Runnable)}, to 
-     * indicate the type of invocation that has been assumed.
-     * @param task The task to invoke.
-     */
-    public static void invokePreferNonBlocking(Runnable task)
-    {
-        switch (getInvocationType(task))
-        {
-            case BLOCKING:
-            case NON_BLOCKING:
-                task.run();
-                break;
-
-            case EITHER:
-                // a Choice exists, so we must indicate NonBlocking
-                invokeNonBlocking(task);
-                break;
-        }
-    }
-
-    /**
-     * Invoke a task with the calling thread.
-     * If the task is an {@link Invocable} of {@link InvocationType#EITHER}
-     * and the preferredInvocationType is not {@link InvocationType#BLOCKING}
-     * then it is invoked with {@link #invokeNonBlocking(Runnable)}.
-     * @param task The task to invoke.
-     * @param preferredInvocationType The invocation type to use if the task
-     * does not indicate a preference.
-     */
-    public static void invokePreferred(Runnable task, InvocationType preferredInvocationType)
-    {
-        switch (getInvocationType(task))
-        {
-            case BLOCKING:
-            case NON_BLOCKING:
-                task.run();
-                break;
-
-            case EITHER:
-                if (getInvocationType(task) == InvocationType.EITHER && preferredInvocationType == InvocationType.NON_BLOCKING)
-                    invokeNonBlocking(task);
-                else
-                    task.run();
-                break;
-        }
-    }
-
-    /**
-     * wrap a task with the to indicate invocation type.
-     * If the task is an {@link Invocable} of {@link InvocationType#EITHER}
-     * and the preferredInvocationType is not {@link InvocationType#BLOCKING}
-     * then it is wrapped with an invocation of {@link #invokeNonBlocking(Runnable)}.
-     * otherwise the task itself is returned.
-     * @param task The task to invoke.
-     * @param preferredInvocationType The invocation type to use if the task
-     * does not indicate a preference.
-     * @return A Runnable that invokes the task in the declared or preferred type.
-     */
-    public static Runnable asPreferred(Runnable task, InvocationType preferredInvocationType)
-    {
-        switch (getInvocationType(task))
-        {
-            case BLOCKING:
-            case NON_BLOCKING:
-                break;
-
-            case EITHER:
-                if (preferredInvocationType == InvocationType.NON_BLOCKING)
-                    return () -> invokeNonBlocking(task);
-                break;
-        }
-
-        return task;
-    }
-
-    /**
      * Get the invocation type of an Object.
      * @param o The object to check the invocation type of.
-     * @return If the object is a {@link Invocable}, it is coerced and the {@link #getInvocationType()}
+     * @return If the object is an Invocable, it is coerced and the {@link #getInvocationType()}
      * used, otherwise {@link InvocationType#BLOCKING} is returned.
      */
     public static InvocationType getInvocationType(Object o)
@@ -184,86 +92,5 @@ public interface Invocable
     default InvocationType getInvocationType()
     {
         return InvocationType.BLOCKING;
-    }
-    
-    /**
-     * An Executor wrapper that knows about Invocable
-     *
-     */
-    public static class InvocableExecutor implements Executor
-    {
-        private static final Logger LOG = Log.getLogger(InvocableExecutor.class);
-
-        private final Executor _executor;
-        private final InvocationType _preferredInvocationForExecute;
-        private final InvocationType _preferredInvocationForInvoke;
-
-        public InvocableExecutor(Executor executor,InvocationType preferred)
-        {
-            this(executor,preferred,preferred);
-        }
-        
-        public InvocableExecutor(Executor executor,InvocationType preferredInvocationForExecute,InvocationType preferredInvocationForIvoke)
-        {
-            _executor=executor;
-            _preferredInvocationForExecute=preferredInvocationForExecute;
-            _preferredInvocationForInvoke=preferredInvocationForIvoke;
-        }
-
-        public Invocable.InvocationType getPreferredInvocationType()
-        {
-            return _preferredInvocationForInvoke;
-        }
-
-        public void invoke(Runnable task)
-        {
-            if (LOG.isDebugEnabled())
-                LOG.debug("{} invoke  {}", this, task);
-            Invocable.invokePreferred(task,_preferredInvocationForInvoke);
-            if (LOG.isDebugEnabled())
-                LOG.debug("{} invoked {}", this, task);
-        }
-        
-        public void execute(Runnable task)
-        {
-            tryExecute(task,_preferredInvocationForExecute);
-        }
-
-        public void execute(Runnable task, InvocationType preferred)
-        {
-            tryExecute(task,preferred);
-        }
-        
-        public boolean tryExecute(Runnable task)
-        {
-            return tryExecute(task,_preferredInvocationForExecute);
-        }
-        
-        public boolean tryExecute(Runnable task, InvocationType preferred)
-        {
-            try
-            {
-                _executor.execute(Invocable.asPreferred(task,preferred));
-                return true;
-            }
-            catch(RejectedExecutionException e)
-            {
-                // If we cannot execute, then close the task
-                LOG.debug(e);
-                LOG.warn("Rejected execution of {}",task);
-                try
-                {
-                    if (task instanceof Closeable)
-                        ((Closeable)task).close();
-                }
-                catch (Exception x)
-                {
-                    e.addSuppressed(x);
-                    LOG.warn(e);
-                }
-            }
-            return false;
-        }
-
     }
 }

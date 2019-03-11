@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -233,6 +233,7 @@ public abstract class AbstractContextProvider extends AbstractLifeCycle implemen
     /** 
      * @see org.eclipse.jetty.deploy.AppProvider#createContextHandler(org.eclipse.jetty.deploy.App)
      */
+    @Override
     public ContextHandler createContextHandler(App app) throws Exception
     {
         if (app == null)
@@ -246,6 +247,7 @@ public abstract class AbstractContextProvider extends AbstractLifeCycle implemen
     }
     
     /* ------------------------------------------------------------ */
+    @Override
     public void setDeploymentManager(DeploymentManager deploymentManager)
     {
         _deploymentManager = deploymentManager;

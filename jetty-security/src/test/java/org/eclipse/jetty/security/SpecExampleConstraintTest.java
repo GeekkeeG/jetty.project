@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,9 +19,9 @@
 package org.eclipse.jetty.security;
 
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -43,10 +43,10 @@ import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.util.B64Code;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Password;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * @version $Revision: 1441 $ $Date: 2010-04-02 12:28:17 +0200 (Fri, 02 Apr 2010) $
@@ -59,7 +59,7 @@ public class SpecExampleConstraintTest
     private static SessionHandler _session;
     private ConstraintSecurityHandler _security;
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer()
     {
         _server = new Server();
@@ -84,7 +84,7 @@ public class SpecExampleConstraintTest
         _server.addBean(_loginService);
     }
 
-    @Before
+    @BeforeEach
     public void setupSecurity()
     {
         _security = new ConstraintSecurityHandler();
@@ -224,7 +224,7 @@ public class SpecExampleConstraintTest
                 }), knownRoles);
     }
 
-    @After
+    @AfterEach
     public void stopServer() throws Exception
     {
         if (_server.isRunning())
@@ -257,14 +257,14 @@ public class SpecExampleConstraintTest
             //There are uncovered methods for GET/POST at url /*
             //without deny-uncovered-http-methods they should be accessible
             String response;
-            response = _connector.getResponses("GET /ctx/index.html HTTP/1.0\r\n\r\n");
+            response = _connector.getResponse("GET /ctx/index.html HTTP/1.0\r\n\r\n");
             assertThat(response,startsWith("HTTP/1.1 200 OK"));   
             
             //set deny-uncovered-http-methods true
             _security.setDenyUncoveredHttpMethods(true);
             
             //check they cannot be accessed
-            response = _connector.getResponses("GET /ctx/index.html HTTP/1.0\r\n\r\n");
+            response = _connector.getResponse("GET /ctx/index.html HTTP/1.0\r\n\r\n");
             assertTrue(response.startsWith("HTTP/1.1 403 Forbidden"));
         }
         finally
@@ -294,39 +294,39 @@ public class SpecExampleConstraintTest
         */
 
         //a user in role HOMEOWNER is forbidden HEAD request
-        response = _connector.getResponses("HEAD /ctx/index.html HTTP/1.0\r\n\r\n");
+        response = _connector.getResponse("HEAD /ctx/index.html HTTP/1.0\r\n\r\n");
         assertTrue(response.startsWith("HTTP/1.1 403 Forbidden"));
 
-        response = _connector.getResponses("HEAD /ctx/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("HEAD /ctx/index.html HTTP/1.0\r\n" +
                 "Authorization: Basic " + B64Code.encode("harry:password") + "\r\n" +
                 "\r\n");
         assertThat(response,startsWith("HTTP/1.1 403 Forbidden"));
 
-        response = _connector.getResponses("HEAD /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("HEAD /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
                                            "Authorization: Basic " + B64Code.encode("harry:password") + "\r\n" +
                                            "\r\n");
         assertThat(response,startsWith("HTTP/1.1 403 Forbidden"));
         
-        response = _connector.getResponses("HEAD /ctx/acme/retail/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("HEAD /ctx/acme/retail/index.html HTTP/1.0\r\n" +
                                            "Authorization: Basic " + B64Code.encode("harry:password") + "\r\n" +
                                            "\r\n");
         assertThat(response,startsWith("HTTP/1.1 403 Forbidden"));
         
         //a user in role CONTRACTOR can do a GET
-        response = _connector.getResponses("GET /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("GET /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
                                            "Authorization: Basic " + B64Code.encode("chris:password") + "\r\n" +
                                            "\r\n");
 
         assertThat(response,startsWith("HTTP/1.1 200 OK"));
         
         //a user in role CONTRACTOR can only do a post if confidential
-        response = _connector.getResponses("POST /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("POST /ctx/acme/wholesale/index.html HTTP/1.0\r\n" +
                                            "Authorization: Basic " + B64Code.encode("chris:password") + "\r\n" +
                                            "\r\n");
         assertThat(response,startsWith("HTTP/1.1 403 !"));
         
         //a user in role HOMEOWNER can do a GET
-        response = _connector.getResponses("GET /ctx/acme/retail/index.html HTTP/1.0\r\n" +
+        response = _connector.getResponse("GET /ctx/acme/retail/index.html HTTP/1.0\r\n" +
                                            "Authorization: Basic " + B64Code.encode("harry:password") + "\r\n" +
                                            "\r\n");
         assertThat(response,startsWith("HTTP/1.1 200 OK"));   

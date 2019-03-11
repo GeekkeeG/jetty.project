@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,7 +29,6 @@ import org.eclipse.jetty.deploy.DeploymentManager;
 import org.eclipse.jetty.osgi.boot.internal.serverfactory.ServerInstanceWrapper;
 import org.eclipse.jetty.osgi.boot.utils.Util;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.osgi.framework.Bundle;
@@ -52,7 +51,7 @@ public class ServiceContextProvider extends AbstractContextProvider implements S
 { 
     private static final Logger LOG = Log.getLogger(AbstractContextProvider.class);
     
-    private Map<ServiceReference, App> _serviceMap = new HashMap<ServiceReference, App>();
+    private Map<ServiceReference, App> _serviceMap = new HashMap<>();
     
     private ServiceRegistration _serviceRegForServices;
     
@@ -146,6 +145,7 @@ public class ServiceContextProvider extends AbstractContextProvider implements S
     
     
     /* ------------------------------------------------------------ */
+    @Override
     public boolean serviceAdded (ServiceReference serviceRef, ContextHandler context)
     {
         if (context == null || serviceRef == null)
@@ -168,7 +168,7 @@ public class ServiceContextProvider extends AbstractContextProvider implements S
                 contextFile = (String)serviceRef.getProperty(OSGiWebappConstants.SERVICE_PROP_CONTEXT_FILE_PATH); 
                   
             String[] keys = serviceRef.getPropertyKeys();
-            Dictionary properties = new Hashtable<String, Object>();
+            Dictionary<String,Object> properties = new Hashtable<>();
             if (keys != null)
             {
                 for (String key:keys)
@@ -190,6 +190,7 @@ public class ServiceContextProvider extends AbstractContextProvider implements S
     
     
     /* ------------------------------------------------------------ */
+    @Override
     public boolean serviceRemoved (ServiceReference serviceRef, ContextHandler context)
     {
 
@@ -219,14 +220,14 @@ public class ServiceContextProvider extends AbstractContextProvider implements S
 
         BundleContext bundleContext = FrameworkUtil.getBundle(this.getClass()).getBundleContext();
 
-        //Start a tracker to find webapps that are osgi services that are targetted to my server name
+        //Start a tracker to find webapps that are osgi services that are targeted to my server name
         _tracker = new ContextTracker (bundleContext, 
                                        Util.createFilter(bundleContext, ContextHandler.class.getName(), getServerInstanceWrapper().getManagedServerName()));
         _tracker.open();
 
         
         //register as an osgi service for deploying contexts defined in a bundle, advertising the name of the jetty Server instance we are related to
-        Dictionary<String,String> properties = new Hashtable<String,String>();
+        Dictionary<String,String> properties = new Hashtable<>();
         properties.put(OSGiServerConstants.MANAGED_JETTY_SERVER_NAME, getServerInstanceWrapper().getManagedServerName());
         
         //register as an osgi service for deploying contexts, advertising the name of the jetty Server instance we are related to

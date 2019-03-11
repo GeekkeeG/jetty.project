@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -24,7 +24,6 @@ import java.security.Principal;
 
 import javax.security.auth.Subject;
 import javax.servlet.ServletRequest;
-
 
 import org.eclipse.jetty.server.UserIdentity;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
@@ -56,6 +55,7 @@ public abstract class AbstractLoginService extends AbstractLifeCycle implements 
         {
             _roleName=name;
         }
+        @Override
         public String getName()
         {
             return _roleName;
@@ -94,6 +94,7 @@ public abstract class AbstractLoginService extends AbstractLifeCycle implements 
         }
 
         /* ------------------------------------------------------------ */
+        @Override
         public String getName()
         {
             return _name;
@@ -129,6 +130,7 @@ public abstract class AbstractLoginService extends AbstractLifeCycle implements 
     /** Set the identityService.
      * @param identityService the identityService to set
      */
+    @Override
     public void setIdentityService(IdentityService identityService)
     {
         if (isRunning())
@@ -151,7 +153,7 @@ public abstract class AbstractLoginService extends AbstractLifeCycle implements 
     @Override
     public String toString()
     {
-        return this.getClass().getSimpleName()+"["+_name+"]";
+        return String.format("%s@%x[%s]", this.getClass().getSimpleName(), hashCode(), _name);
     }
 
     
@@ -203,7 +205,6 @@ public abstract class AbstractLoginService extends AbstractLifeCycle implements 
         
         if (user.getUserPrincipal() instanceof UserPrincipal)
         {
-            System.err.println("VALIDATING user "+fresh.getName());
             return fresh.authenticate(((UserPrincipal)user.getUserPrincipal())._credential);
         }
         

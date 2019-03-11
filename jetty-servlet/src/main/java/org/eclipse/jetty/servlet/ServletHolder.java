@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,6 +20,7 @@ package org.eclipse.jetty.servlet;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
-
 import javax.servlet.MultipartConfigElement;
 import javax.servlet.Servlet;
 import javax.servlet.ServletConfig;
@@ -54,6 +54,8 @@ import org.eclipse.jetty.util.Loader;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
+import org.eclipse.jetty.util.component.Dumpable;
+import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
@@ -81,11 +83,11 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     private ServletRegistration.Dynamic _registration;
     private JspContainer _jspContainer;
 
-    private transient Servlet _servlet;
-    private transient Config _config;
-    private transient long _unavailable;
-    private transient boolean _enabled = true;
-    private transient UnavailableException _unavailableEx;
+    private Servlet _servlet;
+    private long _unavailable;
+    private Config _config;
+    private boolean _enabled = true;
+    private UnavailableException _unavailableEx;
 
 
     public static final String APACHE_SENTINEL_CLASS = "org.apache.tomcat.InstanceManager";
@@ -233,12 +235,14 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public boolean equals(Object o)
     {
         return o instanceof ServletHolder && compareTo((ServletHolder)o)==0;
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public int hashCode()
     {
         return _name==null?System.identityHashCode(this):_name.hashCode();
@@ -304,6 +308,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
 
 
     /* ------------------------------------------------------------ */
+    @Override
     public void doStart()
         throws Exception
     {
@@ -400,9 +405,11 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
 
         _config=new Config();
 
-        if (_class!=null && javax.servlet.SingleThreadModel.class.isAssignableFrom(_class))
-            _servlet = new SingleThreadedWrapper();
-
+        synchronized (this)
+        {
+            if (_class!=null && javax.servlet.SingleThreadModel.class.isAssignableFrom(_class))
+                _servlet = new SingleThreadedWrapper();
+        }
     }
 
 
@@ -434,6 +441,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
 
 
     /* ------------------------------------------------------------ */
+    @Override
     public void doStop()
         throws Exception
     {
@@ -485,18 +493,38 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     public synchronized Servlet getServlet()
         throws ServletException
     {
-        // Handle previous unavailability
-        if (_unavailable!=0)
-        {
-            if (_unavailable<0 || _unavailable>0 && System.currentTimeMillis()<_unavailable)
-                throw _unavailableEx;
-            _unavailable=0;
-            _unavailableEx=null;
-        }
+        Servlet servlet=_servlet;
+        if (servlet!=null && _unavailable==0)
+            return servlet;
 
-        if (_servlet==null)
-            initServlet();
-        return _servlet;
+        synchronized(this)
+        {
+            // Handle previous unavailability
+            if (_unavailable!=0)
+            {
+                if (_unavailable<0 || _unavailable>0 && System.currentTimeMillis()<_unavailable)
+                    throw _unavailableEx;
+                _unavailable=0;
+                _unavailableEx=null;
+            }
+
+            servlet=_servlet;
+            if (servlet!=null)
+                return servlet;
+
+            if (isRunning())
+            {
+                if (_class == null)
+                    throw new UnavailableException("Servlet Not Initialized");
+                if (_unavailable != 0 || !_initOnStartup)
+                    initServlet();
+                servlet=_servlet;
+                if (servlet == null)
+                    throw new UnavailableException("Could not instantiate " + _class);
+            }
+
+            return servlet;
+        }
     }
 
     /* ------------------------------------------------------------ */
@@ -505,7 +533,13 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
      */
     public Servlet getServletInstance()
     {
-        return _servlet;
+        Servlet servlet=_servlet;
+        if (servlet!=null)
+            return servlet;
+        synchronized(this)
+        {
+            return _servlet;
+        }
     }
 
     /* ------------------------------------------------------------ */
@@ -528,7 +562,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
      */
     public boolean isAvailable()
     {
-        if (isStarted()&& _unavailable==0)
+        if (isStarted() && _unavailable==0)
             return true;
         try
         {
@@ -539,7 +573,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
             LOG.ignore(e);
         }
 
-        return isStarted()&& _unavailable==0;
+        return isStarted() && _unavailable==0;
     }
 
     /* ------------------------------------------------------------ */
@@ -604,7 +638,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     }
 
     /* ------------------------------------------------------------ */
-    private void initServlet()
+    private synchronized void initServlet()
         throws ServletException
     {
         Object old_run_as = null;
@@ -722,6 +756,13 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     }
 
     /* ------------------------------------------------------------ */
+    @Override
+    public ContextHandler getContextHandler()
+    {
+        return ContextHandler.getContextHandler(_config.getServletContext());
+    }
+
+    /* ------------------------------------------------------------ */
     /**
      * @see org.eclipse.jetty.server.UserIdentity.Scope#getContextPath()
      */
@@ -767,26 +808,17 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
     protected void prepare (Request baseRequest, ServletRequest request, ServletResponse response)
     throws ServletException, UnavailableException
     {
-        ensureInstance();
+        getServlet();
         MultipartConfigElement mpce = ((Registration)getRegistration()).getMultipartConfig();
         if (mpce != null)
             baseRequest.setAttribute(Request.__MULTIPART_CONFIG_ELEMENT, mpce);
     }
 
-    public synchronized Servlet ensureInstance()
-    throws ServletException, UnavailableException
+    @Deprecated
+    public Servlet ensureInstance()
+            throws ServletException, UnavailableException
     {
-        if (_class==null)
-            throw new UnavailableException("Servlet Not Initialized");
-        Servlet servlet=_servlet;
-        if (!isStarted())
-            throw new UnavailableException("Servlet not initialized", -1);
-        if (_unavailable!=0 || (!_initOnStartup && servlet==null))
-            servlet=getServlet();
-        if (servlet==null)
-            throw new UnavailableException("Could not instantiate "+_class);
-
-        return servlet;
+        return getServlet();
     }
 
     /* ------------------------------------------------------------ */
@@ -810,7 +842,7 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
         if (_class==null)
             throw new UnavailableException("Servlet Not Initialized");
 
-        Servlet servlet = ensureInstance();
+        Servlet servlet = getServlet();
 
         // Service the request
         Object old_run_as = null;
@@ -855,26 +887,23 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
 
 
     /* ------------------------------------------------------------ */
-    private boolean isJspServlet ()
+    protected boolean isJspServlet ()
     {
-        if (_servlet == null)
-            return false;
+        Servlet servlet = getServletInstance();
+        Class<?> c = servlet==null?_class:servlet.getClass();
 
-        Class<?> c = _servlet.getClass();
-
-        boolean result = false;
-        while (c != null && !result)
+        while (c != null)
         {
-            result = isJspServlet(c.getName());
+            if (isJspServlet(c.getName()))
+                return true;
             c = c.getSuperclass();
         }
-
-        return result;
+        return false;
     }
 
 
     /* ------------------------------------------------------------ */
-    private boolean isJspServlet (String classname)
+    protected boolean isJspServlet (String classname)
     {
         if (classname == null)
             return false;
@@ -1263,15 +1292,18 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
      * @throws ServletException if unable to create a new instance
      * @throws IllegalAccessException if not allowed to create a new instance
      * @throws InstantiationException if creating new instance resulted in error
+     * @throws NoSuchMethodException if creating new instance resulted in error
+     * @throws InvocationTargetException If creating new instance throws an exception
      */
-    protected Servlet newInstance() throws ServletException, IllegalAccessException, InstantiationException
+    protected Servlet newInstance() throws ServletException, IllegalAccessException, InstantiationException,
+        NoSuchMethodException, InvocationTargetException
     {
         try
         {
             ServletContext ctx = getServletHandler().getServletContext();
             if (ctx instanceof ServletContextHandler.Context)
                 return ((ServletContextHandler.Context)ctx).createServlet(getHeldClass());
-            return getHeldClass().newInstance();
+            return getHeldClass().getDeclaredConstructor().newInstance();
         }
         catch (ServletException se)
         {
@@ -1280,15 +1312,31 @@ public class ServletHolder extends Holder<Servlet> implements UserIdentity.Scope
                 throw (InstantiationException)cause;
             if (cause instanceof IllegalAccessException)
                 throw (IllegalAccessException)cause;
+            if (cause instanceof NoSuchMethodException)
+                throw (NoSuchMethodException)cause;
+            if (cause instanceof InvocationTargetException)
+                throw (InvocationTargetException)cause;
             throw se;
         }
     }
 
+    /* ------------------------------------------------------------ */
+    @Override
+    public void dump(Appendable out, String indent) throws IOException
+    {
+        if (_initParams.isEmpty())
+            Dumpable.dumpObjects(out, indent, this,
+                _servlet == null?getHeldClass():_servlet);
+        else
+            Dumpable.dumpObjects(out, indent, this,
+                _servlet == null?getHeldClass():_servlet,
+                new DumpableCollection("initParams", _initParams.entrySet()));
+    }
 
     /* ------------------------------------------------------------ */
     @Override
     public String toString()
     {
-        return String.format("%s@%x==%s,jsp=%s,order=%d,inst=%b",_name,hashCode(),_className,_forcedPath,_initOrder,_servlet!=null);
+        return String.format("%s@%x==%s,jsp=%s,order=%d,inst=%b,async=%b",_name,hashCode(),_className,_forcedPath,_initOrder,_servlet!=null,isAsyncSupported());
     }
 }

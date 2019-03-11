@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[using-annotations]]
 === Working with Annotations
@@ -39,7 +41,7 @@ Jetty supports interpretation and application of the following annotations:
 ==== Discovered vs Introspected Annotations
 
 Some types of annotation can be placed on any class, not necessarily just those with which the container interacts directly.
-These type of annotations are refered to as "discovered" to indicate that the container must take proactive action to go out and find them.
+These type of annotations are referred to as "discovered" to indicate that the container must take proactive action to go out and find them.
 The other type of annotation is call "introspected", meaning that they occur on classes with which the container interacts during their lifecycle (e.g. `javax.servlet.Servlet`, `javax.servlet.Filter`, ...etc.), and hence can be found by simple inspection of the class at that point.
 
 Some examples of discovered annotations are:

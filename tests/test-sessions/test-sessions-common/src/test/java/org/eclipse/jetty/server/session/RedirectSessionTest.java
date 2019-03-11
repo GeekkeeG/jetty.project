@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,8 +18,8 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.IOException;
 
@@ -32,7 +32,7 @@ import javax.servlet.http.HttpSession;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 /**
@@ -42,8 +42,6 @@ import org.junit.Test;
  */
 public class RedirectSessionTest
 {
-   
-    
     
     @Test
     public void testSessionRedirect() throws Exception
@@ -57,9 +55,6 @@ public class RedirectSessionTest
         ServletContextHandler testServletContextHandler = testServer.addContext("/context");
         testServletContextHandler.addServlet(Servlet1.class, "/one");
         testServletContextHandler.addServlet(Servlet2.class, "/two");
-
-       
-      
 
         try
         {
@@ -89,6 +84,8 @@ public class RedirectSessionTest
 
     public static class Servlet1 extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
@@ -102,6 +99,8 @@ public class RedirectSessionTest
 
     public static class Servlet2 extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+        
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
@@ -113,7 +112,4 @@ public class RedirectSessionTest
             
         }
     }
-
-
-    
 }

@@ -1,3 +1,5 @@
+DO NOT EDIT - See: https://www.eclipse.org/jetty/documentation/current/startup-modules.html
+
 [description]
 Deploys the Jminix JMX Console within the server
 
@@ -41,5 +43,5 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 [ini-template]
 ## Jminix Configuration
-jminix.port=8088
+# jminix.port=8088
 

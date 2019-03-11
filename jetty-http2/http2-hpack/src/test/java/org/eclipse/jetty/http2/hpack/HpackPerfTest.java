@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -31,9 +31,9 @@ import org.eclipse.jetty.http.MetaData;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.ajax.JSON;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 
 public class HpackPerfTest
@@ -42,14 +42,14 @@ public class HpackPerfTest
     int _unencodedSize;
     int _encodedSize;
     
-    @Before
+    @BeforeEach
     public void before()
     {
         _unencodedSize=0;
         _encodedSize=0;
     }
 
-    @After
+    @AfterEach
     public void after()
     {        
         System.err.printf("dynamictable=%d unencoded=%d encoded=%d p=%3.1f%%%n",_maxDynamicTableSize,_unencodedSize,_encodedSize,100.0*_encodedSize/_unencodedSize);

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,6 +23,7 @@ import java.nio.channels.AsynchronousCloseException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.eclipse.jetty.client.HttpConnection;
 import org.eclipse.jetty.client.HttpDestination;
@@ -49,6 +50,9 @@ public class HttpConnectionOverHTTP extends AbstractConnection implements Connec
     private final HttpChannelOverHTTP channel;
     private long idleTimeout;
 
+    private final LongAdder bytesIn = new LongAdder();
+    private final LongAdder bytesOut = new LongAdder();
+
     public HttpConnectionOverHTTP(EndPoint endPoint, HttpDestination destination, Promise<Connection> promise)
     {
         super(endPoint, destination.getHttpClient().getExecutor());
@@ -70,6 +74,41 @@ public class HttpConnectionOverHTTP extends AbstractConnection implements Connec
     public HttpDestinationOverHTTP getHttpDestination()
     {
         return (HttpDestinationOverHTTP)delegate.getHttpDestination();
+    }
+
+    @Override
+    public long getBytesIn()
+    {
+        return bytesIn.longValue();
+    }
+
+    protected void addBytesIn(long bytesIn)
+    {
+        this.bytesIn.add(bytesIn);
+    }
+
+    @Override
+    public long getBytesOut()
+    {
+        return bytesOut.longValue();
+    }
+
+
+    protected void addBytesOut(long bytesOut)
+    {
+        this.bytesOut.add(bytesOut);
+    }
+
+    @Override
+    public long getMessagesIn()
+    {
+        return getHttpChannel().getMessagesIn();
+    }
+
+    @Override
+    public long getMessagesOut()
+    {
+        return getHttpChannel().getMessagesOut();
     }
 
     @Override
@@ -148,9 +187,8 @@ public class HttpConnectionOverHTTP extends AbstractConnection implements Connec
         if (closed.compareAndSet(false, true))
         {
             getHttpDestination().close(this);
-
             abort(failure);
-
+            channel.destroy();
             getEndPoint().shutdownOutput();
             if (LOG.isDebugEnabled())
                 LOG.debug("Shutdown {}", this);
@@ -209,7 +247,9 @@ public class HttpConnectionOverHTTP extends AbstractConnection implements Connec
             // Save the old idle timeout to restore it.
             EndPoint endPoint = getEndPoint();
             idleTimeout = endPoint.getIdleTimeout();
-            endPoint.setIdleTimeout(request.getIdleTimeout());
+            long requestIdleTimeout = request.getIdleTimeout();
+            if (requestIdleTimeout >= 0)
+                endPoint.setIdleTimeout(requestIdleTimeout);
 
             // One channel per connection, just delegate the send.
             return send(channel, exchange);

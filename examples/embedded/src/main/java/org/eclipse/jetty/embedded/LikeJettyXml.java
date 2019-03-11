@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -30,12 +30,13 @@ import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.rewrite.handler.RewriteHandler;
 import org.eclipse.jetty.security.HashLoginService;
+import org.eclipse.jetty.server.AsyncRequestLogWriter;
+import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.DebugListener;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.LowResourceMonitor;
-import org.eclipse.jetty.server.NCSARequestLog;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnectionStatistics;
@@ -44,7 +45,6 @@ import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.StatisticsHandler;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -60,7 +60,7 @@ public class LikeJettyXml
     public static void main( String[] args ) throws Exception
     {
         // Path to as-built jetty-distribution directory
-        String jettyHomeBuild = "../../jetty-distribution/target/distribution";
+        String jettyHomeBuild = "jetty-distribution/target/distribution";
         
         // Find jetty home and base directories
         String homePath = System.getProperty("jetty.home", jettyHomeBuild);
@@ -171,7 +171,7 @@ public class LikeJettyXml
         deployer.setContexts(contexts);
         deployer.setContextAttribute(
                 "org.eclipse.jetty.server.webapp.ContainerIncludeJarPattern",
-                ".*/servlet-api-[^/]*\\.jar$");
+                ".*/[^/]*servlet-api-[^/]*\\.jar$|.*/javax.servlet.jsp.jstl-.*\\.jar$|.*/[^/]*taglibs.*\\.jar$");
 
         WebAppProvider webapp_provider = new WebAppProvider();
         webapp_provider.setMonitoredDirName(jetty_base + "/webapps");
@@ -184,10 +184,15 @@ public class LikeJettyXml
         server.addBean(deployer);
         
         // === setup jetty plus ==
-        Configuration.ClassList.setServerDefault(server).addAfter(
+        Configuration.ClassList classlist = Configuration.ClassList
+                .setServerDefault( server );
+        classlist.addAfter(
                 "org.eclipse.jetty.webapp.FragmentConfiguration",
                 "org.eclipse.jetty.plus.webapp.EnvConfiguration",
                 "org.eclipse.jetty.plus.webapp.PlusConfiguration");
+        
+        classlist.addBefore("org.eclipse.jetty.webapp.JettyWebXmlConfiguration",
+                            "org.eclipse.jetty.annotations.AnnotationConfiguration");
 
         // === jetty-stats.xml ===
         StatisticsHandler stats = new StatisticsHandler();
@@ -201,17 +206,12 @@ public class LikeJettyXml
         server.setHandler(rewrite);
 
         // === jetty-requestlog.xml ===
-        NCSARequestLog requestLog = new NCSARequestLog();
-        requestLog.setFilename(jetty_home + "/logs/yyyy_mm_dd.request.log");
-        requestLog.setFilenameDateFormat("yyyy_MM_dd");
-        requestLog.setRetainDays(90);
-        requestLog.setAppend(true);
-        requestLog.setExtended(true);
-        requestLog.setLogCookies(false);
-        requestLog.setLogTimeZone("GMT");
-        RequestLogHandler requestLogHandler = new RequestLogHandler();
-        requestLogHandler.setRequestLog(requestLog);
-        handlers.addHandler(requestLogHandler);
+        AsyncRequestLogWriter logWriter = new AsyncRequestLogWriter(jetty_home + "/logs/yyyy_mm_dd.request.log");
+        CustomRequestLog requestLog = new CustomRequestLog(logWriter, CustomRequestLog.EXTENDED_NCSA_FORMAT + " \"%C\"");
+        logWriter.setFilenameDateFormat("yyyy_MM_dd");
+        logWriter.setRetainDays(90);
+        logWriter.setTimeZone("GMT");
+        server.setRequestLog(requestLog);
 
 
         // === jetty-lowresources.xml ===

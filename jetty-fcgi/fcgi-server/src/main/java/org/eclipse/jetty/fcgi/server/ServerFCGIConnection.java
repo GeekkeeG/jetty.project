@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,7 +25,9 @@ import java.util.concurrent.ConcurrentMap;
 import org.eclipse.jetty.fcgi.FCGI;
 import org.eclipse.jetty.fcgi.generator.Flusher;
 import org.eclipse.jetty.fcgi.parser.ServerParser;
+import org.eclipse.jetty.http.BadMessageException;
 import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.io.AbstractConnection;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.EndPoint;
@@ -187,9 +189,7 @@ public class ServerFCGIConnection extends AbstractConnection
             if (LOG.isDebugEnabled())
                 LOG.debug("Request {} failure on {}: {}", request, channel, failure);
             if (channel != null)
-            {
-                channel.onBadMessage(400, failure.toString());
-            }
+                channel.onBadMessage(new BadMessageException(HttpStatus.BAD_REQUEST_400, null, failure));
         }
     }
 }

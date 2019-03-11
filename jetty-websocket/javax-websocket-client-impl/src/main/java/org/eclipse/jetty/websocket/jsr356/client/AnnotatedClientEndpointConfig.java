@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -60,9 +60,9 @@ public class AnnotatedClientEndpointConfig implements ClientEndpointConfig
         {
             try
             {
-                this.configurator = anno.configurator().newInstance();
+                this.configurator = anno.configurator().getDeclaredConstructor( ).newInstance();
             }
-            catch (InstantiationException | IllegalAccessException e)
+            catch (Exception e)
             {
                 StringBuilder err = new StringBuilder();
                 err.append("Unable to instantiate ClientEndpoint.configurator() of ");

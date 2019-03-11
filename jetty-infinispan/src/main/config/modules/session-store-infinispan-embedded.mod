@@ -1,3 +1,5 @@
+DO NOT EDIT - See: https://www.eclipse.org/jetty/documentation/current/startup-modules.html
+
 [description]
 Enables session data store in a local Infinispan cache
 
@@ -6,12 +8,15 @@ session
 
 [provides]
 session-store
+session-store-infnispan-embedded
 
 [depend]
 sessions
 
 [files]
 maven://org.infinispan/infinispan-embedded/7.1.1.Final|lib/infinispan/infinispan-embedded-7.1.1.Final.jar
+basehome:modules/session-store-infinispan-embedded/infinispan-embedded.xml|etc/infinispan-embedded.xml
+
 
 [xml]
 etc/sessions/infinispan/default.xml

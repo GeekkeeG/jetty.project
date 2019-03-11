@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -77,8 +77,8 @@ public class IncludeExcludeSet<T,P> implements Predicate<P>
     {
         try
         {
-            _includes = setClass.newInstance();
-            _excludes = setClass.newInstance();
+            _includes = setClass.getDeclaredConstructor().newInstance();
+            _excludes = setClass.getDeclaredConstructor().newInstance();
             
             if(_includes instanceof Predicate) 
             {
@@ -98,7 +98,11 @@ public class IncludeExcludeSet<T,P> implements Predicate<P>
                 _excludePredicate = new SetContainsPredicate(_excludes);
             }
         }
-        catch (InstantiationException | IllegalAccessException e)
+        catch (RuntimeException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }

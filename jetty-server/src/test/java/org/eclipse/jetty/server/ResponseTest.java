@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,23 +20,24 @@ package org.eclipse.jetty.server;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.io.PrintWriter;
-import java.net.HttpCookie;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -58,6 +59,7 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
 import org.eclipse.jetty.http.CookieCompliance;
+import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
@@ -76,14 +78,14 @@ import org.eclipse.jetty.server.session.NullSessionDataStore;
 import org.eclipse.jetty.server.session.Session;
 import org.eclipse.jetty.server.session.SessionData;
 import org.eclipse.jetty.server.session.SessionHandler;
+import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.eclipse.jetty.util.thread.TimerScheduler;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ResponseTest
 {
@@ -109,10 +111,13 @@ public class ResponseTest
     
     private Server _server;
     private HttpChannel _channel;
+    private ByteBuffer _content = BufferUtil.allocate(16*1024);
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
+        BufferUtil.clear(_content);
+        
         _server = new Server();
         Scheduler _scheduler = new TimerScheduler();
         HttpConfiguration config = new HttpConfiguration();
@@ -136,6 +141,12 @@ public class ResponseTest
             @Override
             public void send(MetaData.Response info, boolean head, ByteBuffer content, boolean lastContent, Callback callback)
             {
+                if(BufferUtil.hasContent(content))
+                {
+                    BufferUtil.append(_content, content);
+                }
+            
+                
                 if (_channelError==null)
                     callback.succeeded();
                 else
@@ -169,10 +180,11 @@ public class ResponseTest
             {
                 return false;
             }
+            
         });
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         _server.stop();
@@ -362,6 +374,54 @@ public class ResponseTest
     }
 
     @Test
+    public void testLocaleFormat() throws Exception
+    {
+        Response response = getResponse();
+
+        ContextHandler context = new ContextHandler();
+        context.addLocaleEncoding(Locale.ENGLISH.toString(), "ISO-8859-1");
+        context.addLocaleEncoding(Locale.ITALIAN.toString(), "ISO-8859-2");
+        response.getHttpChannel().getRequest().setContext(context.getServletContext());
+
+        response.setLocale(java.util.Locale.ITALIAN);
+        
+        PrintWriter out = response.getWriter();
+        
+        out.format("TestA1 %,.2f%n", 1234567.89);
+        out.format("TestA2 %,.2f%n", 1234567.89);
+        
+        out.format((java.util.Locale)null,"TestB1 %,.2f%n", 1234567.89);
+        out.format((java.util.Locale)null,"TestB2 %,.2f%n", 1234567.89);
+        
+        out.format(Locale.ENGLISH,"TestC1 %,.2f%n", 1234567.89);
+        out.format(Locale.ENGLISH,"TestC2 %,.2f%n", 1234567.89);
+        
+        out.format(Locale.ITALIAN,"TestD1 %,.2f%n", 1234567.89);
+        out.format(Locale.ITALIAN,"TestD2 %,.2f%n", 1234567.89);
+
+        out.close();
+        
+        /* Test A */
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestA1 1.234.567,89"));
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestA2 1.234.567,89"));
+        
+        /* Test B */
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestB1 1.234.567,89"));
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestB2 1.234.567,89"));
+        
+        /* Test C */
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestC1 1,234,567.89"));
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestC2 1,234,567.89"));
+        
+        /* Test D */
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestD1 1.234.567,89"));
+        assertThat(BufferUtil.toString(_content),Matchers.containsString("TestD2 1.234.567,89"));
+        
+        
+    }
+
+    
+    @Test
     public void testContentTypeCharacterEncoding() throws Exception
     {
         Response response = getResponse();
@@ -519,6 +579,40 @@ public class ResponseTest
         assertEquals("foo2/bar2;charset=utf-8", response.getContentType());
     }
 
+
+    @Test
+    public void testPrintln() throws Exception
+    {
+        Response response = getResponse();
+        Request request = response.getHttpChannel().getRequest();
+
+        SessionHandler session_handler = new SessionHandler();
+        session_handler.setServer(_server);
+        session_handler.setUsingCookies(true);
+        session_handler.start();
+        request.setSessionHandler(session_handler);
+        HttpSession session = request.getSession(true);
+        response.setCharacterEncoding(UTF_8.name());
+
+        assertThat(session,not(nullValue()));
+        assertTrue(session.isNew());
+
+        String expected = "";
+        response.getOutputStream().print("ABC");
+        expected += "ABC";
+        response.getOutputStream().println("XYZ");
+        expected += "XYZ\r\n";
+        String s="";
+        for (int i=0; i<100; i++)
+            s += "\u20AC\u20AC\u20AC\u20AC\u20AC\u20AC\u20AC\u20AC\u20AC\u20AC";
+        response.getOutputStream().println(s);
+        expected += s +"\r\n";
+
+        response.getOutputStream().close();
+        assertEquals(expected,BufferUtil.toString(_content, UTF_8));
+    }
+
+
     @Test
     public void testContentTypeWithOther() throws Exception
     {
@@ -639,22 +733,15 @@ public class ResponseTest
         PrintWriter writer = response.getWriter();
         writer.println("test");
         writer.flush();
-        Assert.assertFalse(writer.checkError());
+        assertFalse(writer.checkError());
 
         Throwable cause = new IOException("problem at mill");
         _channel.abort(cause);
         writer.println("test");
-        Assert.assertTrue(writer.checkError());
-        try
-        {
-            writer.println("test");
-            Assert.fail();
-        }
-        catch(RuntimeIOException e)
-        {
-            Assert.assertEquals(cause,e.getCause());
-        }
+        assertTrue(writer.checkError());
 
+        RuntimeIOException e = assertThrows(RuntimeIOException.class, ()-> writer.println("test"));
+        assertEquals(cause,e.getCause());
     }
 
     @Test
@@ -775,10 +862,18 @@ public class ResponseTest
                     String expected = tests[i][1]
                         .replace("@HOST@",host==null ? request.getLocalAddr() : (host.contains(":")?("["+host+"]"):host ))
                         .replace("@PORT@",host==null ? ":8888" : (port==80?"":(":"+port)));
-                    assertEquals("test-"+i+" "+host+":"+port,expected,location);
+                    assertEquals(expected, location, "test-"+i+" "+host+":"+port);
                 }
             }
         }
+    }
+
+    @Test
+    public void testInvalidSendRedirect() throws Exception
+    {
+        // Request is /path/info, so we need 3 ".." for an invalid redirect.
+        Response response = getResponse();
+        assertThrows(IllegalStateException.class, ()-> response.sendRedirect("../../../invalid"));
     }
 
     @Test
@@ -787,15 +882,8 @@ public class ResponseTest
         Response response = getResponse();
         response.setBufferSize(20 * 1024);
         response.getWriter().print("hello");
-        try
-        {
-            response.setBufferSize(21 * 1024);
-            fail("Expected IllegalStateException on Request.setBufferSize");
-        }
-        catch (Exception e)
-        {
-            assertTrue(e instanceof IllegalStateException);
-        }
+
+        assertThrows(IllegalStateException.class, ()-> response.setBufferSize(21 * 1024));
     }
 
     @Test
@@ -844,14 +932,14 @@ public class ResponseTest
 
                 LineNumberReader reader = new LineNumberReader(new InputStreamReader(socket.getInputStream()));
                 String line = reader.readLine();
-                Assert.assertThat(line, Matchers.startsWith("HTTP/1.1 200 OK"));
+                assertThat(line, startsWith("HTTP/1.1 200 OK"));
                 // look for blank line
                 while (line != null && line.length() > 0)
                     line = reader.readLine();
 
                 // Read the first line of the GET
                 line = reader.readLine();
-                Assert.assertThat(line, Matchers.startsWith("HTTP/1.1 200 OK"));
+                assertThat(line, startsWith("HTTP/1.1 200 OK"));
 
                 String last = null;
                 while (line != null)
@@ -891,7 +979,7 @@ public class ResponseTest
     public void testAddCookieComplianceRFC2965() throws Exception
     {
         Response response = getResponse();
-        response.getHttpChannel().getHttpConfiguration().setCookieCompliance(CookieCompliance.RFC2965);
+        response.getHttpChannel().getHttpConfiguration().setResponseCookieCompliance(CookieCompliance.RFC2965);
 
         Cookie cookie = new Cookie("name", "value");
         cookie.setDomain("domain");
@@ -932,7 +1020,7 @@ public class ResponseTest
     @Test
     public void testAddCookie_JavaNet() throws Exception
     {
-        HttpCookie cookie = new HttpCookie("foo", URLEncoder.encode("bar;baz", UTF_8.toString()));
+        java.net.HttpCookie cookie = new java.net.HttpCookie("foo", URLEncoder.encode("bar;baz", UTF_8.toString()));
         cookie.setPath("/secure");
         
         assertEquals("foo=\"bar%3Bbaz\";$Path=\"/secure\"", cookie.toString());
@@ -962,15 +1050,48 @@ public class ResponseTest
 
         assertNotNull(set);
         ArrayList<String> list = Collections.list(set);
-        assertEquals(2, list.size());
-        assertTrue(list.contains("name=value;Path=/path;Domain=domain;Secure;HttpOnly"));
-        assertTrue(list.contains("name2=value2;Path=/path;Domain=domain"));
+        assertThat(list, containsInAnyOrder(
+                "name=value;Path=/path;Domain=domain;Secure;HttpOnly",
+                "name2=value2;Path=/path;Domain=domain"
+        ));
 
         //get rid of the cookies
         response.reset();
 
         set = response.getHttpFields().getValues("Set-Cookie");
         assertFalse(set.hasMoreElements());
+    }
+
+    @Test
+    public void testReplaceHttpCookie()
+    {
+        Response response = getResponse();
+
+        response.replaceCookie(new HttpCookie("Foo","123456"));
+        response.replaceCookie(new HttpCookie("Foo","123456", "A", "/path"));
+        response.replaceCookie(new HttpCookie("Foo","123456", "B", "/path"));
+
+        response.replaceCookie(new HttpCookie("Bar","123456"));
+        response.replaceCookie(new HttpCookie("Bar","123456",null, "/left"));
+        response.replaceCookie(new HttpCookie("Bar","123456", null, "/right"));
+
+        response.replaceCookie(new HttpCookie("Bar","value", null, "/right"));
+        response.replaceCookie(new HttpCookie("Bar","value",null, "/left"));
+        response.replaceCookie(new HttpCookie("Bar","value"));
+
+        response.replaceCookie(new HttpCookie("Foo","value", "B", "/path"));
+        response.replaceCookie(new HttpCookie("Foo","value", "A", "/path"));
+        response.replaceCookie(new HttpCookie("Foo","value"));
+
+        assertThat(Collections.list(response.getHttpFields().getValues("Set-Cookie")),
+                contains(
+                        "Foo=value",
+                        "Foo=value;Path=/path;Domain=A",
+                        "Foo=value;Path=/path;Domain=B",
+                        "Bar=value",
+                        "Bar=value;Path=/left",
+                        "Bar=value;Path=/right"
+                ));
     }
 
     @Test

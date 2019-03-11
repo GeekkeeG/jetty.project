@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,9 @@
 //
 
 package org.eclipse.jetty.server.handler;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -38,8 +41,8 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
 import org.eclipse.jetty.util.component.LifeCycle;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class ShutdownHandlerTest
 {
@@ -79,10 +82,10 @@ public class ShutdownHandlerTest
         });
 
         HttpTester.Response response = shutdown(shutdownToken);
-        Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+        assertEquals(HttpStatus.OK_200, response.getStatus());
 
-        Assert.assertTrue(stopLatch.await(5, TimeUnit.SECONDS));
-        Assert.assertEquals(AbstractLifeCycle.STOPPED, server.getState());
+        assertTrue(stopLatch.await(5, TimeUnit.SECONDS));
+        assertEquals(AbstractLifeCycle.STOPPED, server.getState());
     }
 
     @Test
@@ -91,10 +94,10 @@ public class ShutdownHandlerTest
         start(null);
 
         HttpTester.Response response = shutdown("wrongToken");
-        Assert.assertEquals(HttpStatus.UNAUTHORIZED_401, response.getStatus());
+        assertEquals(HttpStatus.UNAUTHORIZED_401, response.getStatus());
 
         Thread.sleep(1000);
-        Assert.assertEquals(AbstractLifeCycle.STARTED, server.getState());
+        assertEquals(AbstractLifeCycle.STARTED, server.getState());
     }
 
     @Test
@@ -111,10 +114,10 @@ public class ShutdownHandlerTest
         });
 
         HttpTester.Response response = shutdown(shutdownToken);
-        Assert.assertEquals(HttpStatus.UNAUTHORIZED_401, response.getStatus());
+        assertEquals(HttpStatus.UNAUTHORIZED_401, response.getStatus());
 
         Thread.sleep(1000);
-        Assert.assertEquals(AbstractLifeCycle.STARTED, server.getState());
+        assertEquals(AbstractLifeCycle.STARTED, server.getState());
     }
 
     private HttpTester.Response shutdown(String shutdownToken) throws IOException

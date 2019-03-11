@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,8 @@
 
 package org.eclipse.jetty.util.log;
 
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 import java.io.File;
 import java.io.FileFilter;
 import java.net.MalformedURLException;
@@ -25,14 +27,13 @@ import java.net.URL;
 import java.net.URLClassLoader;
 
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
-import org.junit.Assume;
 
 public final class Slf4jHelper
 {
     public static ClassLoader createTestClassLoader(ClassLoader parentClassLoader) throws MalformedURLException
     {
         File testJarDir = MavenTestingUtils.getTargetFile("test-jars");
-        Assume.assumeTrue(testJarDir.exists()); // trigger @Ignore if dir not there
+        assumeTrue(testJarDir.exists()); // trigger @Ignore if dir not there
 
         File jarfiles[] = testJarDir.listFiles(new FileFilter()
         {
@@ -46,7 +47,7 @@ public final class Slf4jHelper
             }
         });
 
-        Assume.assumeTrue(jarfiles.length > 0); // trigger @Ignore if no jar files.
+        assumeTrue(jarfiles.length > 0); // trigger @Ignore if no jar files.
 
         URL urls[] = new URL[jarfiles.length];
         for (int i = 0; i < jarfiles.length; i++)

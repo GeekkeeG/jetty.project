@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -40,7 +40,7 @@ public class Graph
             addNode(toNode=edge.getTo());
         
         // replace edge with normalized edge
-        if (edge.getFrom()!=fromNode || edge.getTo()!=toNode)
+        if (!edge.getFrom().equals(fromNode) || !edge.getTo().equals(toNode))
             edge=new Edge(fromNode,toNode);
         
         this._edges.add(edge);
@@ -129,7 +129,7 @@ public class Graph
 
         for (Edge edge : this._edges)
         {
-            if ((edge.getFrom() == node) || (edge.getTo() == node))
+            if (edge.getFrom().equals(node) || edge.getTo().equals(node))
             {
                 fromedges.add(edge);
             }
@@ -151,7 +151,7 @@ public class Graph
 
         for (Edge edge : this._edges)
         {
-            if (edge.getFrom() == from)
+            if (edge.getFrom().equals(from))
             {
                 fromedges.add(edge);
             }
@@ -192,7 +192,9 @@ public class Graph
      */
     public Path getPath(Node from, Node to)
     {
-        if (from == to)
+        @SuppressWarnings("ReferenceEquality")
+        boolean sameObject = (from==to);
+        if (sameObject)
         {
             return new Path();
         }

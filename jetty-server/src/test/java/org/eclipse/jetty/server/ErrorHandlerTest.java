@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,27 +19,40 @@
 package org.eclipse.jetty.server;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.*;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.IOException;
 
+import javax.servlet.DispatcherType;
+import javax.servlet.RequestDispatcher;
+import javax.servlet.ServletException;
+import javax.servlet.DispatcherType;
+import javax.servlet.RequestDispatcher;
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.eclipse.jetty.http.BadMessageException;
+import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpTester;
+import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.handler.ErrorHandler;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class ErrorHandlerTest
 {
-    Server server;
-    LocalConnector connector;
+    static Server server;
+    static LocalConnector connector;
     
-    @Before
-    public void before() throws Exception
+    @BeforeAll
+    public static void before() throws Exception
     {
         server = new Server();
         connector = new LocalConnector(server);
@@ -69,17 +82,77 @@ public class ErrorHandlerTest
                          .append("}");
                         break;
                     }
+                    case "text/plain":
+                    {
+                        baseRequest.setHandled(true);
+                        response.setContentType("text/plain");
+                        response.getOutputStream().print(response.getContentType());
+                        break;
+                    }
                     default:
                         super.generateAcceptableResponse(baseRequest,request,response,code,message,mimeType);
                 }
+            }    
+        });
+        
+        server.setHandler(new AbstractHandler()
+        {
+            @Override
+            public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException
+            {
+                if (baseRequest.getDispatcherType()==DispatcherType.ERROR)
+                {
+                    baseRequest.setHandled(true);
+                    response.sendError(((Integer)request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE)).intValue());
+                    return;
+                }
+                
+                if(target.startsWith("/charencoding/"))
+                {
+                    baseRequest.setHandled(true);
+                    response.setCharacterEncoding("utf-8");
+                    response.sendError(404);
+                    return;
+                }
+                
+                if(target.startsWith("/badmessage/"))
+                {
+                    throw new ServletException(new BadMessageException(Integer.valueOf(target.substring(12))));
+                }
             }
-            
+        });
+        server.setHandler(new AbstractHandler()
+        {
+            @Override
+            public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException
+            {
+                
+                if (baseRequest.getDispatcherType()==DispatcherType.ERROR)
+                {
+                    baseRequest.setHandled(true);
+                    response.sendError(((Integer)request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE)).intValue());
+                    return;
+                }
+                
+                if(target.startsWith("/charencoding/"))
+                {
+                    baseRequest.setHandled(true);
+                    response.setCharacterEncoding("utf-8");
+                    response.sendError(404);
+                    return;
+                }
+                
+                if(target.startsWith("/badmessage/"))
+                {
+                    throw new ServletException(new BadMessageException(Integer.valueOf(target.substring(12))));
+                }
+            }
         });
         server.start();
     }
     
-    @After
-    public void after() throws Exception
+    @AfterAll
+    public static void after() throws Exception
     {
         server.stop();
     }
@@ -257,4 +330,31 @@ public class ErrorHandlerTest
         assertThat(response,containsString("Content-Type: text/json"));
     }
 
+    @Test
+    public void testCharEncoding() throws Exception
+    {
+        String rawResponse = connector.getResponse(
+                "GET /charencoding/foo HTTP/1.1\r\n"+
+                        "Host: Localhost\r\n"+
+                        "Accept: text/plain\r\n"+
+                        "\r\n");
+        HttpTester.Response response = HttpTester.parseResponse(rawResponse);
+
+        assertThat("Response status code", response.getStatus(), is(404));
+        HttpField contentType = response.getField(HttpHeader.CONTENT_TYPE);
+        assertThat("Response Content-Type", contentType, is(notNullValue()));
+        assertThat("Response Content-Type value", contentType.getValue(), not(containsString("null")));
+    }
+
+    @Test
+    public void testBadMessage() throws Exception
+    {
+        String rawResponse = connector.getResponse(
+                "GET /badmessage/444 HTTP/1.1\r\n"+
+                        "Host: Localhost\r\n"+
+                        "\r\n");
+        HttpTester.Response response = HttpTester.parseResponse(rawResponse);
+
+        assertThat("Response status code", response.getStatus(), is(444));
+    }
 }

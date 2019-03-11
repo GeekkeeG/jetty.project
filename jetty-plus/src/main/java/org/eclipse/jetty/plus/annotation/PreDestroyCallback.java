@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -42,6 +42,7 @@ public class PreDestroyCallback extends LifeCycleCallback
      * - not static
      * @see org.eclipse.jetty.plus.annotation.LifeCycleCallback#validate(java.lang.Class, java.lang.reflect.Method)
      */
+    @Override
     public void validate(Class<?> clazz, Method method)
     {        
 
@@ -57,6 +58,7 @@ public class PreDestroyCallback extends LifeCycleCallback
     }
 
     
+    @Override
     public void callback(Object instance)
     {
         try
@@ -69,6 +71,7 @@ public class PreDestroyCallback extends LifeCycleCallback
         }
     }
     
+    @Override
     public boolean equals(Object o)
     {
         if (super.equals(o) && (o instanceof PreDestroyCallback))

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,9 +20,9 @@ package org.eclipse.jetty.websocket.server.helper;
 
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.toolchain.test.EventQueue;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.WebSocketAdapter;
 import org.eclipse.jetty.websocket.common.util.Sha1Sum;
@@ -30,12 +30,7 @@ import org.eclipse.jetty.websocket.common.util.Sha1Sum;
 public class CaptureSocket extends WebSocketAdapter
 {
     private final CountDownLatch latch = new CountDownLatch(1);
-    public EventQueue<String> messages;
-
-    public CaptureSocket()
-    {
-        messages = new EventQueue<String>();
-    }
+    public LinkedBlockingQueue<String> messages = new LinkedBlockingQueue<>();
 
     public boolean awaitConnected(long timeout) throws InterruptedException
     {
@@ -70,7 +65,7 @@ public class CaptureSocket extends WebSocketAdapter
         }
         catch (NoSuchAlgorithmException e)
         {
-            messages.add("ERROR: Unable to caclulate Binary SHA1: " + e.getMessage());
+            messages.add("ERROR: Unable to calculate Binary SHA1: " + e.getMessage());
             e.printStackTrace();
         }
     }

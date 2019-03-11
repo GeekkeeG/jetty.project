@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -68,6 +68,7 @@ public class Transaction extends NamingEntry
      * These should be in ADDITION to java:comp/UserTransaction
      * @see NamingEntry#bindToENC(java.lang.String)
      */
+    @Override
     public void bindToENC (String localName)
     throws NamingException
     {   
@@ -94,6 +95,7 @@ public class Transaction extends NamingEntry
     /**
      * Unbind this Transaction from a java:comp
      */
+    @Override
     public void unbindENC ()
     {
         try

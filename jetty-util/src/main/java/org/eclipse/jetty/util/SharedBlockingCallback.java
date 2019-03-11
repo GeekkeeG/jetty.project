@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,7 +29,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
-import org.eclipse.jetty.util.thread.Invocable.InvocationType;
 
 /**
  * Provides a reusable {@link Callback} that can block the thread
@@ -49,7 +48,7 @@ import org.eclipse.jetty.util.thread.Invocable.InvocationType;
  */
 public class SharedBlockingCallback
 {
-    static final Logger LOG = Log.getLogger(SharedBlockingCallback.class);
+    private static final Logger LOG = Log.getLogger(SharedBlockingCallback.class);
 
     private static Throwable IDLE = new ConstantThrowable("IDLE");
     private static Throwable SUCCEEDED = new ConstantThrowable("SUCCEEDED");
@@ -61,6 +60,7 @@ public class SharedBlockingCallback
     private final Condition _complete = _lock.newCondition();
     private Blocker _blocker = new Blocker();
 
+    @Deprecated
     protected long getIdleTimeout()
     {
         return -1;
@@ -136,7 +136,11 @@ public class SharedBlockingCallback
                     _complete.signalAll();
                 }
                 else
-                    throw new IllegalStateException(_state);
+                {
+                    LOG.warn("Succeeded after {}",_state.toString());
+                    if (LOG.isDebugEnabled())
+                        LOG.debug(_state);
+                }
             }
             finally
             {
@@ -168,7 +172,12 @@ public class SharedBlockingCallback
                 }
                 else
                 {
-                    throw new IllegalStateException(_state);
+                    LOG.warn("Failed after {}: {}", _state, cause);
+                    if (LOG.isDebugEnabled())
+                    {
+                        LOG.debug(_state);
+                        LOG.debug(cause);
+                    }
                 }
             }
             finally
@@ -227,6 +236,7 @@ public class SharedBlockingCallback
             }
             catch (final InterruptedException e)
             {
+                _state = e;
                 throw new InterruptedIOException();
             }
             finally
@@ -253,9 +263,9 @@ public class SharedBlockingCallback
             {
                 try 
                 {
-                    // If the blocker timed itself out, remember the state
-                    if (_state instanceof BlockerTimeoutException)
-                        // and create a new Blocker
+                    // If we have a failure
+                    if (_state!=null && _state!=SUCCEEDED)
+                        // create a new Blocker
                         _blocker=new Blocker();
                     else
                         // else reuse Blocker

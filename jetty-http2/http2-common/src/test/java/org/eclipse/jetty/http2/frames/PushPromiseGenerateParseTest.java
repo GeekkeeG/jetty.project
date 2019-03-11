@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,9 +18,13 @@
 
 package org.eclipse.jetty.http2.frames;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 import org.eclipse.jetty.http.HostPortHttpField;
 import org.eclipse.jetty.http.HttpField;
@@ -34,8 +38,8 @@ import org.eclipse.jetty.http2.hpack.HpackEncoder;
 import org.eclipse.jetty.http2.parser.Parser;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.MappedByteBufferPool;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class PushPromiseGenerateParseTest
 {
@@ -55,6 +59,7 @@ public class PushPromiseGenerateParseTest
                 frames.add(frame);
             }
         }, 4096, 8192);
+        parser.init(UnaryOperator.identity());
 
         int streamId = 13;
         int promisedStreamId = 17;
@@ -78,17 +83,17 @@ public class PushPromiseGenerateParseTest
                 }
             }
 
-            Assert.assertEquals(1, frames.size());
+            assertEquals(1, frames.size());
             PushPromiseFrame frame = frames.get(0);
-            Assert.assertEquals(streamId, frame.getStreamId());
-            Assert.assertEquals(promisedStreamId, frame.getPromisedStreamId());
+            assertEquals(streamId, frame.getStreamId());
+            assertEquals(promisedStreamId, frame.getPromisedStreamId());
             MetaData.Request request = (MetaData.Request)frame.getMetaData();
-            Assert.assertEquals(metaData.getMethod(), request.getMethod());
-            Assert.assertEquals(metaData.getURI(), request.getURI());
+            assertEquals(metaData.getMethod(), request.getMethod());
+            assertEquals(metaData.getURI(), request.getURI());
             for (int j = 0; j < fields.size(); ++j)
             {
                 HttpField field = fields.getField(j);
-                Assert.assertTrue(request.getFields().contains(field));
+                assertTrue(request.getFields().contains(field));
             }
         }
     }
@@ -107,6 +112,7 @@ public class PushPromiseGenerateParseTest
                 frames.add(frame);
             }
         }, 4096, 8192);
+        parser.init(UnaryOperator.identity());
 
         int streamId = 13;
         int promisedStreamId = 17;
@@ -130,17 +136,17 @@ public class PushPromiseGenerateParseTest
                 }
             }
 
-            Assert.assertEquals(1, frames.size());
+            assertEquals(1, frames.size());
             PushPromiseFrame frame = frames.get(0);
-            Assert.assertEquals(streamId, frame.getStreamId());
-            Assert.assertEquals(promisedStreamId, frame.getPromisedStreamId());
+            assertEquals(streamId, frame.getStreamId());
+            assertEquals(promisedStreamId, frame.getPromisedStreamId());
             MetaData.Request request = (MetaData.Request)frame.getMetaData();
-            Assert.assertEquals(metaData.getMethod(), request.getMethod());
-            Assert.assertEquals(metaData.getURI(), request.getURI());
+            assertEquals(metaData.getMethod(), request.getMethod());
+            assertEquals(metaData.getURI(), request.getURI());
             for (int j = 0; j < fields.size(); ++j)
             {
                 HttpField field = fields.getField(j);
-                Assert.assertTrue(request.getFields().contains(field));
+                assertTrue(request.getFields().contains(field));
             }
         }
     }

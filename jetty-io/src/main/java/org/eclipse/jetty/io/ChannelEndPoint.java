@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,12 +25,12 @@ import java.nio.channels.ByteChannel;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.Invocable;
-import org.eclipse.jetty.util.thread.Locker;
 import org.eclipse.jetty.util.thread.Scheduler;
 
 /**
@@ -41,7 +41,6 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
 {
     private static final Logger LOG = Log.getLogger(ChannelEndPoint.class);
 
-    private final Locker _locker = new Locker();
     private final ByteChannel _channel;
     private final GatheringByteChannel _gather;
     protected final ManagedSelector _selector;
@@ -95,16 +94,10 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
         }
     }
 
-    private final Runnable _runUpdateKey = new RunnableTask("runUpdateKey")
+    private final ManagedSelector.SelectorUpdate _updateKeyAction = new ManagedSelector.SelectorUpdate()
     {
         @Override
-        public InvocationType getInvocationType()
-        {
-            return InvocationType.NON_BLOCKING;
-        }
-
-        @Override
-        public void run()
+        public void update(Selector selector)
         {
             updateKey();
         }
@@ -235,29 +228,28 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
             return -1;
 
         int pos=BufferUtil.flipToFill(buffer);
+        int filled;
         try
         {
-            int filled = _channel.read(buffer);
-            if (LOG.isDebugEnabled()) // Avoid boxing of variable 'filled'
-                LOG.debug("filled {} {}", filled, this);
-
+            filled = _channel.read(buffer);
             if (filled>0)
                 notIdle();
             else if (filled==-1)
                 shutdownInput();
-
-            return filled;
         }
         catch(IOException e)
         {
             LOG.debug(e);
             shutdownInput();
-            return -1;
+            filled = -1;
         }
         finally
         {
             BufferUtil.flipToFlush(buffer,pos);
         }
+        if (LOG.isDebugEnabled())
+            LOG.debug("filled {} {}", filled, BufferUtil.toDetailString(buffer));
+        return filled;
     }
 
     @Override
@@ -336,7 +328,7 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
         int readyOps = _key.readyOps();
         int oldInterestOps;
         int newInterestOps;
-        try (Locker.Lock lock = _locker.lock())
+        synchronized(this)
         {
             _updatePending = true;
             // Remove the readyOps, that here can only be OP_READ or OP_WRITE (or both).
@@ -376,7 +368,7 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
         {
             int oldInterestOps;
             int newInterestOps;
-            try (Locker.Lock lock = _locker.lock())
+            synchronized(this)
             {
                 _updatePending = false;
                 oldInterestOps = _currentInterestOps;
@@ -413,7 +405,7 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
         int oldInterestOps;
         int newInterestOps;
         boolean pending;
-        try (Locker.Lock lock = _locker.lock())
+        synchronized(this)
         {
             pending = _updatePending;
             oldInterestOps = _desiredInterestOps;
@@ -426,29 +418,18 @@ public abstract class ChannelEndPoint extends AbstractEndPoint implements Manage
             LOG.debug("changeInterests p={} {}->{} for {}", pending, oldInterestOps, newInterestOps, this);
 
         if (!pending && _selector!=null)
-            _selector.submit(_runUpdateKey);
+            _selector.submit(_updateKeyAction);
     }
-
 
     @Override
     public String toEndPointString()
     {
         // We do a best effort to print the right toString() and that's it.
-        try
-        {
-            boolean valid = _key != null && _key.isValid();
-            int keyInterests = valid ? _key.interestOps() : -1;
-            int keyReadiness = valid ? _key.readyOps() : -1;
-            return String.format("%s{io=%d/%d,kio=%d,kro=%d}",
-                    super.toEndPointString(),
-                    _currentInterestOps,
-                    _desiredInterestOps,
-                    keyInterests,
-                    keyReadiness);
-        }
-        catch (Throwable x)
-        {
-            return String.format("%s{io=%s,kio=-2,kro=-2}", super.toString(), _desiredInterestOps);
-        }
+        return String.format("%s{io=%d/%d,kio=%d,kro=%d}",
+                super.toEndPointString(),
+                _currentInterestOps,
+                _desiredInterestOps,
+                ManagedSelector.safeInterestOps(_key),
+                ManagedSelector.safeReadyOps(_key));
     }
 }

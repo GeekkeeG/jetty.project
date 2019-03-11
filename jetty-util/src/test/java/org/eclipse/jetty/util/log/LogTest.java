@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,28 +19,35 @@
 package org.eclipse.jetty.util.log;
 
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 public class LogTest
 {
     private static Logger originalLogger;
     private static Map<String,Logger> originalLoggers;
 
-    @BeforeClass
+    @BeforeAll
     public static void rememberOriginalLogger()
     {
         originalLogger = Log.getLog();
-        originalLoggers = new HashMap<String, Logger>(Log.getLoggers());
+        originalLoggers = new HashMap<>(Log.getLoggers());
         Log.getMutableLoggers().clear();
     }
 
-    @AfterClass
+    @AfterAll
     public static void restoreOriginalLogger()
     {
         Log.setLog(originalLogger);
@@ -54,8 +61,8 @@ public class LogTest
         Logger log = Log.getLogger(LogTest.class);
         log.info("Test default logging");
     }
-
-    // @Test
+    
+    @Test
     public void testNamedLogNamed_StdErrLog()
     {
         Log.setLog(new StdErrLog());
@@ -88,6 +95,26 @@ public class LogTest
     private void assertNamedLogging(Class<?> clazz)
     {
         Logger lc = Log.getLogger(clazz);
-        Assert.assertEquals("Named logging (impl=" + Log.getLog().getClass().getName() + ")",lc.getName(),clazz.getName());
+        assertEquals(lc.getName(), clazz.getName(), "Named logging (impl=" + Log.getLog().getClass().getName() + ")");
+    }
+
+    public static Stream<Arguments> packageCases()
+    {
+        return Stream.of(
+                Arguments.of(null, ""),
+                Arguments.of("org.eclipse.Foo.\u0000", "oe.Foo"),
+                Arguments.of(".foo", "foo"),
+                Arguments.of(".bar.Foo", "b.Foo"),
+                Arguments.of("org...bar..Foo", "ob.Foo")
+        );
+    }
+    
+    @ParameterizedTest
+    @MethodSource("packageCases")
+    public void testCondensePackage(String input, String expected)
+    {
+        StdErrLog log = new StdErrLog();
+        StdErrLog logger = (StdErrLog) log.newLogger(input);
+        assertThat("log[" + input + "] condenses to name", logger._abbrevname, is(expected));
     }
 }

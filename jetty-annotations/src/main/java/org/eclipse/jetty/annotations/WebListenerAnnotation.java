@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -58,6 +58,7 @@ public class WebListenerAnnotation extends DiscoveredAnnotation
     /**
      * @see DiscoveredAnnotation#apply()
      */
+    @Override
     public void apply()
     {
         Class<? extends java.util.EventListener> clazz = (Class<? extends EventListener>)getTargetClass();
@@ -78,14 +79,12 @@ public class WebListenerAnnotation extends DiscoveredAnnotation
                     HttpSessionAttributeListener.class.isAssignableFrom(clazz) ||
                     HttpSessionIdListener.class.isAssignableFrom(clazz))
             {
-                java.util.EventListener listener = (java.util.EventListener)_context.getServletContext().createInstance(clazz);      
-                MetaData metaData = _context.getMetaData();
+                MetaData metaData = _context.getMetaData();           
                 if (metaData.getOrigin(clazz.getName()+".listener") == Origin.NotSet)
-                {
+                {     
                     ListenerHolder h = _context.getServletHandler().newListenerHolder(new Source(Source.Origin.ANNOTATION, clazz.getName()));
-                    h.setListener(listener);
+                    h.setHeldClass(clazz);
                     _context.getServletHandler().addListener(h);
-                    _context.addEventListener(listener);
                 }
             }
             else

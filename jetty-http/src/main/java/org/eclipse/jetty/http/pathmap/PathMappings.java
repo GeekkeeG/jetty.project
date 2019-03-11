@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
@@ -30,7 +31,6 @@ import org.eclipse.jetty.util.ArrayTernaryTrie;
 import org.eclipse.jetty.util.Trie;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -55,15 +55,15 @@ public class PathMappings<E> implements Iterable<MappedResource<E>>, Dumpable
     @Override
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
 
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        ContainerLifeCycle.dump(out,indent,_mappings);
+        Dumpable.dumpObjects(out, indent, toString(),  _mappings);
     }
-
+    
     @ManagedAttribute(value = "mappings", readonly = true)
     public List<MappedResource<E>> getMappings()
     {
@@ -203,6 +203,18 @@ public class PathMappings<E> implements Iterable<MappedResource<E>>, Dumpable
             throw new RuntimeException("Path Spec String must start with '^', '/', or '*.': got [" + pathSpecString + "]");
         }
         return pathSpecString.charAt(0) == '^' ? new RegexPathSpec(pathSpecString):new ServletPathSpec(pathSpecString);
+    }
+    
+    public E get(PathSpec spec)
+    {
+        Optional<E> optionalResource = _mappings.stream()
+                .filter(mappedResource -> mappedResource.getPathSpec().equals(spec))
+                .map(mappedResource -> mappedResource.getResource())
+                .findFirst();
+        if(!optionalResource.isPresent())
+            return null;
+                
+        return optionalResource.get();
     }
     
     public boolean put(String pathSpecString, E resource)

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -24,13 +24,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.servlet.ServletContainerInitializer;
 
-import org.eclipse.jetty.util.ConcurrentHashSet;
 import org.eclipse.jetty.util.Loader;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
@@ -43,8 +43,8 @@ public class ContainerInitializer
     
     final protected ServletContainerInitializer _target;
     final protected Class<?>[] _interestedTypes;
-    final protected Set<String> _applicableTypeNames = new ConcurrentHashSet<String>();
-    final protected Set<String> _annotatedTypeNames = new ConcurrentHashSet<String>();
+    final protected Set<String> _applicableTypeNames = ConcurrentHashMap.newKeySet();
+    final protected Set<String> _annotatedTypeNames = ConcurrentHashMap.newKeySet();
 
 
     public ContainerInitializer (ServletContainerInitializer target, Class<?>[] classes)
@@ -61,7 +61,7 @@ public class ContainerInitializer
 
         try
         {
-            _target = (ServletContainerInitializer)loader.loadClass(m.group(1)).newInstance();
+            _target = (ServletContainerInitializer)loader.loadClass(m.group(1)).getDeclaredConstructor().newInstance();
             String[] interested = StringUtil.arrayFromString(m.group(2));
             _interestedTypes = new Class<?>[interested.length];
             for (int i=0;i<interested.length;i++)
@@ -147,6 +147,7 @@ public class ContainerInitializer
         }
     }
 
+    @Override
     public String toString()
     {
         List<String> interested = Collections.emptyList();

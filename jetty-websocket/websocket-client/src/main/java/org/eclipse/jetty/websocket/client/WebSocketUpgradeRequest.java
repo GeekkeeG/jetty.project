@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -49,6 +50,7 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.io.Connection;
 import org.eclipse.jetty.io.EndPoint;
 import org.eclipse.jetty.util.B64Code;
 import org.eclipse.jetty.util.MultiMap;
@@ -363,7 +365,8 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
      * Exists for internal use of HttpClient by WebSocketClient.
      * <p>
      * Maintained for Backward compatibility and also for JSR356 WebSocket ClientContainer use.
-     * 
+     *
+     * @param wsClient the WebSocketClient that this request uses
      * @param httpClient the HttpClient that this request uses
      * @param request the ClientUpgradeRequest (backward compat) to base this request from
      */
@@ -375,7 +378,8 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
 
     /**
      * Initiating a WebSocket Upgrade using HTTP/1.1
-     * 
+     *
+     * @param wsClient the WebSocketClient that this request uses
      * @param httpClient the HttpClient that this request uses
      * @param localEndpoint the local endpoint (following Jetty WebSocket Client API rules) to use for incoming
      * WebSocket events
@@ -413,6 +417,8 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
         this.localEndpoint = this.wsClient.getEventDriverFactory().wrap(localEndpoint);
 
         this.fut = new CompletableFuture<Session>();
+
+        getConversation().setAttribute(HttpConnectionUpgrader.class.getName(), this);
     }
 
     private final String genRandomKey()
@@ -502,7 +508,7 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
             }
 
             Throwable failure = result.getFailure();
-            if ((failure instanceof java.net.ConnectException) || (failure instanceof UpgradeException))
+            if ((failure instanceof java.io.IOException) || (failure instanceof UpgradeException))
             {
                 // handle as-is
                 handleException(failure);
@@ -512,18 +518,19 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
                 // wrap in UpgradeException 
                 handleException(new UpgradeException(requestURI,responseStatusCode,responseLine,failure));
             }
+            return;
         }
 
         if (responseStatusCode != HttpStatus.SWITCHING_PROTOCOLS_101)
         {
             // Failed to upgrade (other reason)
-            handleException(new UpgradeException(requestURI,responseStatusCode,responseLine));
+            handleException(new UpgradeException(requestURI,responseStatusCode,"Failed to upgrade to websocket: Unexpected HTTP Response Status Code: " + responseLine));
         }
     }
 
     private void handleException(Throwable failure)
     {
-        localEndpoint.incomingError(failure);
+        localEndpoint.onError(failure);
         fut.completeExceptionally(failure);
     }
 
@@ -570,6 +577,13 @@ public class WebSocketUpgradeRequest extends HttpRequest implements CompleteList
 
         WebSocketClientConnection connection = new WebSocketClientConnection(endp,wsClient.getExecutor(),wsClient.getScheduler(),localEndpoint.getPolicy(),
                 wsClient.getBufferPool());
+
+        Collection<Connection.Listener> connectionListeners = wsClient.getBeans(Connection.Listener.class);
+
+        if (connectionListeners != null)
+        {
+            connectionListeners.forEach((listener) -> connection.addListener(listener));
+        }
 
         URI requestURI = this.getURI();
 

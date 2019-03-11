@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -57,7 +57,7 @@ public class OSGiWebappClassLoader extends WebAppClassLoader implements BundleRe
      * when a logging framework is setup in the osgi classloaders, it can access
      * this and register the classes that must not be found in the jar.
      */
-    public static final Set<String> JAR_WITH_SUCH_CLASS_MUST_BE_EXCLUDED = new HashSet<String>();
+    public static final Set<String> JAR_WITH_SUCH_CLASS_MUST_BE_EXCLUDED = new HashSet<>();
 
     public static void addClassThatIdentifiesAJarThatMustBeRejected(Class<?> zclass)
     {
@@ -93,11 +93,10 @@ public class OSGiWebappClassLoader extends WebAppClassLoader implements BundleRe
         _osgiBundleClassLoader = BundleClassLoaderHelperFactory.getFactory().getHelper().getBundleClassLoader(contributor);
     }
     
-    
 
-    /* ------------------------------------------------------------ */
+
     @Override
-    public Class<?> loadClass(String name) throws ClassNotFoundException
+    protected Class<?> findClass(String name) throws ClassNotFoundException
     {
         try
         {
@@ -107,7 +106,8 @@ public class OSGiWebappClassLoader extends WebAppClassLoader implements BundleRe
         {
             try
             {
-                return super.loadClass(name);
+
+                return super.findClass(name);
             }
             catch (ClassNotFoundException cne2)
             {
@@ -123,6 +123,7 @@ public class OSGiWebappClassLoader extends WebAppClassLoader implements BundleRe
      * @return The <code>Bundle</code> object associated with this
      *         <code>BundleReference</code>.
      */
+    @Override
     public Bundle getBundle()
     {
         return _contributor;
@@ -146,10 +147,52 @@ public class OSGiWebappClassLoader extends WebAppClassLoader implements BundleRe
         return url != null ? url : super.getResource(name);
     }
     
+    
+    
+    
+    @Override
+    public URL findResource(String name)
+    {
+        URL url = _osgiBundleClassLoader.getResource(name);
+        return url != null ? url : super.findResource(name);
+    }
+    
+    
+
+    /** 
+     * Try to load the class from the bundle classloader.
+     * We do NOT load it as a resource as the WebAppClassLoader does because the
+     * url that is returned is an osgi-special url that does not play
+     * properly with WebAppClassLoader's method of extracting the class
+     * from the resource.  This implementation directly asks the osgi
+     * bundle classloader to load the given class name.
+     * 
+     * @see org.eclipse.jetty.webapp.WebAppClassLoader#loadAsResource(java.lang.String, boolean)
+     */
+    @Override
+    protected Class<?> loadAsResource(String name, boolean checkSystemResource) throws ClassNotFoundException
+    {
+        try
+        {
+            return _osgiBundleClassLoader.loadClass(name);
+        }
+        catch (ClassNotFoundException cne)
+        {
+            try
+            {
+                return super.loadAsResource(name, checkSystemResource);
+            }
+            catch (ClassNotFoundException cne2)
+            {
+                throw cne;
+            }
+        }
+    }
+
     /* ------------------------------------------------------------ */
     private List<URL> toList(Enumeration<URL> e, Enumeration<URL> e2)
     {
-        List<URL> list = new ArrayList<URL>();
+        List<URL> list = new ArrayList<>();
         while (e != null && e.hasMoreElements())
             list.add(e.nextElement());
         while (e2 != null && e2.hasMoreElements())

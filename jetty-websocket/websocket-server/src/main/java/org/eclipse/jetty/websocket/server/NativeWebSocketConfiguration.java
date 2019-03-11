@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,6 @@
 
 package org.eclipse.jetty.websocket.server;
 
-import java.io.IOException;
 import java.util.Iterator;
 
 import javax.servlet.ServletContext;
@@ -30,7 +29,6 @@ import org.eclipse.jetty.http.pathmap.RegexPathSpec;
 import org.eclipse.jetty.http.pathmap.ServletPathSpec;
 import org.eclipse.jetty.http.pathmap.UriTemplatePathSpec;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
-import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.websocket.api.WebSocketException;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
@@ -43,7 +41,7 @@ import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
  * Only applicable if using {@link WebSocketUpgradeFilter}
  * </p>
  */
-public class NativeWebSocketConfiguration extends ContainerLifeCycle implements MappedWebSocketCreator, Dumpable
+public class NativeWebSocketConfiguration extends ContainerLifeCycle implements MappedWebSocketCreator
 {
     private final WebSocketServerFactory factory;
     private final PathMappings<WebSocketCreator> mappings = new PathMappings<>();
@@ -57,6 +55,7 @@ public class NativeWebSocketConfiguration extends ContainerLifeCycle implements 
     {
         this.factory = webSocketServerFactory;
         addBean(this.factory);
+        addBean(this.mappings);
     }
     
     @Override
@@ -64,19 +63,6 @@ public class NativeWebSocketConfiguration extends ContainerLifeCycle implements 
     {
         mappings.removeIf((mapped) -> !(mapped.getResource() instanceof PersistedWebSocketCreator));
         super.doStop();
-    }
-    
-    @Override
-    public String dump()
-    {
-        return ContainerLifeCycle.dump(this);
-    }
-    
-    @Override
-    public void dump(Appendable out, String indent) throws IOException
-    {
-        // TODO: show factory/mappings ?
-        mappings.dump(out, indent);
     }
     
     /**
@@ -122,6 +108,7 @@ public class NativeWebSocketConfiguration extends ContainerLifeCycle implements 
      * @param pathSpec the pathspec to respond on
      * @param creator the websocket creator to activate on the provided mapping.
      */
+    @Override
     public void addMapping(PathSpec pathSpec, WebSocketCreator creator)
     {
         WebSocketCreator wsCreator = creator;
@@ -170,9 +157,9 @@ public class NativeWebSocketConfiguration extends ContainerLifeCycle implements 
         {
             try
             {
-                return endpointClass.newInstance();
+                return endpointClass.getDeclaredConstructor().newInstance();
             }
-            catch (InstantiationException | IllegalAccessException e)
+            catch (Exception e)
             {
                 throw new WebSocketException("Unable to create instance of " + endpointClass.getName(), e);
             }

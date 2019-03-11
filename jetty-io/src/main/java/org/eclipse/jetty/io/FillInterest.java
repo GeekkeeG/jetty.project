@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,8 +21,6 @@ package org.eclipse.jetty.io;
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadPendingException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jetty.util.Callback;
@@ -39,7 +37,6 @@ public abstract class FillInterest
 {
     private final static Logger LOG = Log.getLogger(FillInterest.class);
     private final AtomicReference<Callback> _interested = new AtomicReference<>(null);
-    private Throwable _lastSet;
 
     protected FillInterest()
     {
@@ -58,8 +55,6 @@ public abstract class FillInterest
         if (!tryRegister(callback))
         {
             LOG.warn("Read pending for {} prevented {}", _interested, callback);
-            if (LOG.isDebugEnabled())
-                LOG.warn("callback set at ",_lastSet);
             throw new ReadPendingException();
         }   
     }
@@ -81,10 +76,7 @@ public abstract class FillInterest
             return false;
 
         if (LOG.isDebugEnabled())
-        {
-            LOG.debug("{} register {}",this,callback);
-            _lastSet=new Throwable(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date()) + ":" + Thread.currentThread().getName());
-        }
+            LOG.debug("interested {}",this);
         
         try
         {
@@ -101,15 +93,19 @@ public abstract class FillInterest
     /**
      * Call to signal that a read is now possible.
      */
-    public void fillable()
+    public boolean fillable()
     {
-        Callback callback = _interested.get();
         if (LOG.isDebugEnabled())
-            LOG.debug("{} fillable {}",this,callback);
+            LOG.debug("fillable {}",this);
+        Callback callback = _interested.get();
         if (callback != null && _interested.compareAndSet(callback, null))
+        {
             callback.succeeded();
-        else if (LOG.isDebugEnabled())
+            return true;
+        }
+        if (LOG.isDebugEnabled())
             LOG.debug("{} lost race {}",this,callback);
+        return false;
     }
 
     /**
@@ -134,6 +130,8 @@ public abstract class FillInterest
      */
     public boolean onFail(Throwable cause)
     {
+        if (LOG.isDebugEnabled())
+            LOG.debug("onFail " + this, cause);
         Callback callback = _interested.get();
         if (callback != null && _interested.compareAndSet(callback, null))
         {
@@ -145,9 +143,9 @@ public abstract class FillInterest
 
     public void onClose()
     {
-        Callback callback = _interested.get();
         if (LOG.isDebugEnabled())
-            LOG.debug("{} onClose {}",this,callback);
+            LOG.debug("onClose {}",this);
+        Callback callback = _interested.get();
         if (callback != null && _interested.compareAndSet(callback, null))
             callback.failed(new ClosedChannelException());
     }
@@ -155,7 +153,7 @@ public abstract class FillInterest
     @Override
     public String toString()
     {
-        return String.format("FillInterest@%x{%b,%s}", hashCode(), _interested.get()!=null, _interested.get());
+        return String.format("FillInterest@%x{%s}", hashCode(), _interested.get());
     }
 
     

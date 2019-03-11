@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -89,6 +89,7 @@ public class ContainerTldBundleDiscoverer implements TldBundleDiscoverer
      * 
      * @return The location of the jars that contain tld files as URLs.
      */
+    @Override
     public URL[] getUrlsForBundlesWithTlds(DeploymentManager deploymentManager, BundleFileLocatorHelper locatorHelper) throws Exception
     {        
         if (!isJspAvailable())
@@ -146,7 +147,7 @@ public class ContainerTldBundleDiscoverer implements TldBundleDiscoverer
 
     /**
      * Check that jsp is on the classpath
-     * @return
+     * @return <code>true</code> if jsp is available in the environment
      */
     public boolean isJspAvailable()
     {
@@ -181,7 +182,8 @@ public class ContainerTldBundleDiscoverer implements TldBundleDiscoverer
               // Class.getForName("org.apache.jasper.runtime.JspFactoryImpl")
               // however its bundles does not import the jasper package
               // so it fails. let's help things out:
-                fact = (JspFactory) JettyBootstrapActivator.class.getClassLoader().loadClass(DEFAULT_JSP_FACTORY_IMPL_CLASS).newInstance();
+                fact = (JspFactory) JettyBootstrapActivator.class.getClassLoader()
+                    .loadClass(DEFAULT_JSP_FACTORY_IMPL_CLASS).getDeclaredConstructor().newInstance();
                 JspFactory.setDefaultFactory(fact);
             }
         }
@@ -195,7 +197,7 @@ public class ContainerTldBundleDiscoverer implements TldBundleDiscoverer
     /**
      * Find the bundle that contains a jstl implementation class, which assumes that
      * the jstl taglibs will be inside the same bundle.
-     * @return
+     * @return Bundle contains the jstl implementation class
      */
     public Bundle findJstlBundle ()
     {
@@ -223,7 +225,7 @@ public class ContainerTldBundleDiscoverer implements TldBundleDiscoverer
      * 
      * Support only 2 types of packaging for the bundle: - the bundle is a jar
      * (recommended for runtime.) - the bundle is a folder and contain jars in
-     * the root and/or in the lib folder (nice for PDE developement situations)
+     * the root and/or in the lib folder (nice for PDE development situations)
      * Unsupported: the bundle is a jar that embeds more jars.
      * 
      * @param locatorHelper

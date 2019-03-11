@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,16 +18,20 @@
 
 package org.eclipse.jetty.util;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
 
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.eclipse.jetty.util.ReadLineInputStream.Termination;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ReadLineInputStreamTest
 {
@@ -37,7 +41,7 @@ public class ReadLineInputStreamTest
     ReadLineInputStream _in;
     volatile Thread _writer;
     
-    @Before
+    @BeforeEach
     public void before() throws Exception
     {
         _queue.clear();
@@ -82,7 +86,7 @@ public class ReadLineInputStreamTest
         _writer.start();
     }
     
-    @After
+    @AfterEach
     public void after()  throws Exception
     {
         _pout=null;
@@ -96,11 +100,12 @@ public class ReadLineInputStreamTest
         _queue.add("\rHello\rWorld\r\r");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CR), _in.getLineTerminations());
     }
     
     @Test
@@ -109,11 +114,12 @@ public class ReadLineInputStreamTest
         _queue.add("\nHello\nWorld\n\n");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.LF), _in.getLineTerminations());
     }
     
     @Test
@@ -122,11 +128,12 @@ public class ReadLineInputStreamTest
         _queue.add("\r\nHello\r\nWorld\r\n\r\n");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CRLF), _in.getLineTerminations());
     }
     
 
@@ -140,11 +147,12 @@ public class ReadLineInputStreamTest
         _queue.add("\r");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CR), _in.getLineTerminations());
     }
     
     @Test
@@ -157,11 +165,12 @@ public class ReadLineInputStreamTest
         _queue.add("\n");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.LF), _in.getLineTerminations());
     }
     
     @Test
@@ -175,11 +184,12 @@ public class ReadLineInputStreamTest
         _queue.add("");
         _queue.add("__CLOSE__");
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals("Hello",_in.readLine());
-        Assert.assertEquals("World",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals("Hello",_in.readLine());
+        assertEquals("World",_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CRLF), _in.getLineTerminations());
     }
 
 
@@ -192,15 +202,16 @@ public class ReadLineInputStreamTest
         _queue.add("\n");
         _queue.add("__CLOSE__");
 
-        Assert.assertEquals("Header",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
+        assertEquals("Header",_in.readLine());
+        assertEquals("",_in.readLine());
 
         byte[] body = new byte[6];
         _in.read(body);
-        Assert.assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
+        assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.LF), _in.getLineTerminations());
     }
     
     @Test
@@ -212,15 +223,17 @@ public class ReadLineInputStreamTest
         _queue.add("\r");
         _queue.add("__CLOSE__");
 
-        Assert.assertEquals("Header",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
+        assertEquals("Header",_in.readLine());
+        assertEquals("",_in.readLine());
 
         byte[] body = new byte[6];
         _in.read(body);
-        Assert.assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
+        assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CR), _in.getLineTerminations());
+
     }
     
     @Test
@@ -232,15 +245,17 @@ public class ReadLineInputStreamTest
         _queue.add("\r\n");
         _queue.add("__CLOSE__");
 
-        Assert.assertEquals("Header",_in.readLine());
-        Assert.assertEquals("",_in.readLine());
+        assertEquals("Header",_in.readLine());
+        assertEquals("",_in.readLine());
 
         byte[] body = new byte[6];
         _in.read(body);
-        Assert.assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
+        assertEquals("\nBody\n",new String(body,0,6,StandardCharsets.UTF_8));
         
-        Assert.assertEquals("",_in.readLine());
-        Assert.assertEquals(null,_in.readLine());
+        assertEquals("",_in.readLine());
+        assertEquals(null,_in.readLine());
+        assertEquals(EnumSet.of(Termination.CRLF), _in.getLineTerminations());
+
     }
 
     

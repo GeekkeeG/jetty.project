@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -27,9 +27,14 @@ import java.util.concurrent.Executor;
 import javax.websocket.DeploymentException;
 import javax.websocket.Endpoint;
 import javax.websocket.Session;
+import javax.websocket.WebSocketContainer;
 import javax.websocket.server.ServerEndpoint;
 import javax.websocket.server.ServerEndpointConfig;
 
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.server.handler.ContextHandler;
+import org.eclipse.jetty.servlet.ServletContextHandler;
+import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.websocket.common.WebSocketSession;
@@ -42,17 +47,56 @@ import org.eclipse.jetty.websocket.jsr356.metadata.EndpointMetadata;
 import org.eclipse.jetty.websocket.server.NativeWebSocketConfiguration;
 import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
 
+@ManagedObject("JSR356 Server Container")
 public class ServerContainer extends ClientContainer implements javax.websocket.server.ServerContainer
 {
     private static final Logger LOG = Log.getLogger(ServerContainer.class);
-
+    
+    /**
+     * Get the WebSocketContainer out of the current ThreadLocal reference
+     * of the active ContextHandler.
+     *
+     * @return the WebSocketContainer if found, null if not found.
+     */
+    public static WebSocketContainer getWebSocketContainer()
+    {
+        ContextHandler.Context context = ContextHandler.getCurrentContext();
+        if (context == null)
+            return null;
+        
+        ContextHandler handler = ContextHandler.getContextHandler(context);
+        if (handler == null)
+            return null;
+        
+        if (!(handler instanceof ServletContextHandler))
+            return null;
+        
+        return (javax.websocket.WebSocketContainer) handler.getServletContext().getAttribute("javax.websocket.server.ServerContainer");
+    }
+    
     private final NativeWebSocketConfiguration configuration;
     private List<Class<?>> deferredEndpointClasses;
     private List<ServerEndpointConfig> deferredEndpointConfigs;
-
+    
+    /**
+     * @deprecated use {@code ServerContainer(NativeWebSocketConfiguration, HttpClient)} instead
+     * @param configuration the {@link NativeWebSocketConfiguration} to use
+     * @param executor not used
+     */
+    @Deprecated
     public ServerContainer(NativeWebSocketConfiguration configuration, Executor executor)
     {
-        super(configuration.getFactory());
+        this(configuration, (HttpClient) null);
+    }
+
+    /**
+     *
+     * @param configuration the {@link NativeWebSocketConfiguration} to use
+     * @param httpClient the {@link HttpClient} instance to use
+     */
+    public ServerContainer(NativeWebSocketConfiguration configuration, HttpClient httpClient)
+    {
+        super(configuration.getFactory(), httpClient);
         this.configuration = configuration;
         EventDriverFactory eventDriverFactory = this.configuration.getFactory().getEventDriverFactory();
         eventDriverFactory.addImplementation(new JsrServerEndpointImpl());

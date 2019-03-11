@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,8 +20,6 @@
 package org.eclipse.jetty.server.session;
 
 import java.util.Set;
-
-import org.eclipse.jetty.util.component.LifeCycle;
 
 /**
  * SessionDataStore
@@ -68,10 +66,10 @@ public interface SessionDataStore extends SessionDataMap
     /**
      * Test if data exists for a given session id.
      * 
-     * @param id Identity of session whose existance should be checked
+     * @param id Identity of session whose existence should be checked
      * 
      * @return true if valid, non-expired session exists
-     * @throws Exception if problem checking existance with persistence layer
+     * @throws Exception if problem checking existence with persistence layer
      */
     public boolean exists (String id) throws Exception;
     

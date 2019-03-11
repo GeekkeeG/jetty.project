@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,14 @@
 
 package org.eclipse.jetty.websocket.client;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.toolchain.test.EventQueue;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.websocket.api.Session;
@@ -32,7 +34,7 @@ import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketError;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
 import org.eclipse.jetty.websocket.api.annotations.WebSocket;
-import org.junit.Assert;
+
 
 @WebSocket(maxTextMessageSize = 100*1024)
 public class MaxMessageSocket
@@ -42,8 +44,8 @@ public class MaxMessageSocket
     public CountDownLatch openLatch = new CountDownLatch(1);
     public CountDownLatch closeLatch = new CountDownLatch(1);
     public CountDownLatch dataLatch = new CountDownLatch(1);
-    public EventQueue<String> messageQueue = new EventQueue<>();
-    public EventQueue<Throwable> errorQueue = new EventQueue<>();
+    public LinkedBlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
+    public LinkedBlockingQueue<Throwable> errorQueue = new LinkedBlockingQueue<>();
     public int closeCode = -1;
     public StringBuilder closeMessage = new StringBuilder();
 
@@ -75,7 +77,7 @@ public class MaxMessageSocket
     public void onError(Throwable cause)
     {
         LOG.debug("onWebSocketError",cause);
-        Assert.assertThat("Error capture",errorQueue.offer(cause),is(true));
+        assertThat("Error capture",errorQueue.offer(cause),is(true));
     }
 
     public Session getSession()
@@ -85,18 +87,18 @@ public class MaxMessageSocket
 
     public void awaitConnect(int duration, TimeUnit unit) throws InterruptedException
     {
-        Assert.assertThat("Client Socket connected",openLatch.await(duration,unit),is(true));
+        assertThat("Client Socket connected",openLatch.await(duration,unit),is(true));
     }
     
     public void waitForMessage(int timeoutDuration, TimeUnit timeoutUnit) throws InterruptedException
     {
         LOG.debug("Waiting for message");
-        Assert.assertThat("Message Received",dataLatch.await(timeoutDuration,timeoutUnit),is(true));
+        assertThat("Message Received",dataLatch.await(timeoutDuration,timeoutUnit),is(true));
     }
     
     public void assertMessage(String expected)
     {
         String actual = messageQueue.poll();
-        Assert.assertEquals("Message",expected,actual);
+        assertEquals(expected, actual, "Message");
     }
 }

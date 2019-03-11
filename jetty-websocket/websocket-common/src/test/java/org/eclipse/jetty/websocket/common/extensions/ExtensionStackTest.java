@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,15 @@
 
 package org.eclipse.jetty.websocket.common.extensions;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
@@ -31,17 +35,14 @@ import org.eclipse.jetty.websocket.api.extensions.ExtensionConfig;
 import org.eclipse.jetty.websocket.common.extensions.identity.IdentityExtension;
 import org.eclipse.jetty.websocket.common.scopes.SimpleContainerScope;
 import org.eclipse.jetty.websocket.common.scopes.WebSocketContainerScope;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
-import org.junit.Assert;
-import org.junit.Rule;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class ExtensionStackTest
 {
     private static final Logger LOG = Log.getLogger(ExtensionStackTest.class);
-    
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("Test");
+
+    public ByteBufferPool bufferPool = new MappedByteBufferPool();
 
     @SuppressWarnings("unchecked")
     private <T> T assertIsExtension(String msg, Object obj, Class<T> clazz)
@@ -50,7 +51,7 @@ public class ExtensionStackTest
         {
             return (T)obj;
         }
-        Assert.assertEquals("Expected " + msg + " class",clazz.getName(),obj.getClass().getName());
+        assertEquals(clazz.getName(), obj.getClass().getName(), "Expected " + msg + " class");
         return null;
     }
 
@@ -89,7 +90,7 @@ public class ExtensionStackTest
             // Should be no change to handlers
             Extension actualIncomingExtension = assertIsExtension("Incoming",stack.getNextIncoming(),IdentityExtension.class);
             Extension actualOutgoingExtension = assertIsExtension("Outgoing",stack.getNextOutgoing(),IdentityExtension.class);
-            Assert.assertEquals(actualIncomingExtension,actualOutgoingExtension);
+            assertEquals(actualIncomingExtension,actualOutgoingExtension);
         }
         finally
         {
@@ -125,8 +126,8 @@ public class ExtensionStackTest
             IdentityExtension actualIncomingExtension = assertIsExtension("Incoming",stack.getNextIncoming(),IdentityExtension.class);
             IdentityExtension actualOutgoingExtension = assertIsExtension("Outgoing",stack.getNextOutgoing(),IdentityExtension.class);
 
-            Assert.assertThat("Incoming[identity].id",actualIncomingExtension.getParam("id"),is("A"));
-            Assert.assertThat("Outgoing[identity].id",actualOutgoingExtension.getParam("id"),is("B"));
+            assertThat("Incoming[identity].id",actualIncomingExtension.getParam("id"),is("A"));
+            assertThat("Outgoing[identity].id",actualOutgoingExtension.getParam("id"),is("B"));
         }
         finally
         {
@@ -157,8 +158,8 @@ public class ExtensionStackTest
             LOG.debug("{}",stack.dump());
 
             // Should be no change to handlers
-            Assert.assertEquals("Incoming Handler",stack.getNextIncoming(),session);
-            Assert.assertEquals("Outgoing Handler",stack.getNextOutgoing(),connection);
+            assertEquals(stack.getNextIncoming(), session, "Incoming Handler");
+            assertEquals(stack.getNextOutgoing(), connection, "Outgoing Handler");
         }
         finally
         {
@@ -186,7 +187,7 @@ public class ExtensionStackTest
         List<ExtensionConfig> negotiated = stack.getNegotiatedExtensions();
         String response = ExtensionConfig.toHeaderValue(negotiated);
         
-        Assert.assertThat("Negotiated Extensions", response, is("permessage-deflate"));
+        assertThat("Negotiated Extensions", response, is("permessage-deflate"));
         LOG.debug("Shouldn't cause a NPE: {}",stack.toString());
     }
 }

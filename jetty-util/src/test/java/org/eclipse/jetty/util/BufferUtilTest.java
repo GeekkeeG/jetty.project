@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,27 +19,22 @@
 package org.eclipse.jetty.util;
 
 
+import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.log.Logger;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
-import org.eclipse.jetty.util.log.Log;
-import org.eclipse.jetty.util.log.Logger;
-import org.junit.Assert;
-import org.junit.Ignore;
-import org.junit.Test;
-
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class BufferUtilTest
 {
@@ -63,7 +58,7 @@ public class BufferUtilTest
         };
 
         for (int i=0;i<buf.length;i++)
-            assertEquals("t"+i, val[i], BufferUtil.toInt(buf[i]));
+            assertEquals(val[i], BufferUtil.toInt(buf[i]), "t"+i);
     }
 
     @Test
@@ -86,7 +81,7 @@ public class BufferUtilTest
             BufferUtil.clearToFill(buffer);
             BufferUtil.putDecInt(buffer,val[i]);
             BufferUtil.flipToFlush(buffer,0);
-            assertEquals("t"+i,str[i],BufferUtil.toString(buffer));
+            assertEquals(str[i], BufferUtil.toString(buffer), "t"+i);
         }
     }
 
@@ -110,7 +105,7 @@ public class BufferUtilTest
             BufferUtil.clearToFill(buffer);
             BufferUtil.putDecLong(buffer,val[i]);
             BufferUtil.flipToFlush(buffer,0);
-            assertEquals("t"+i,str[i],BufferUtil.toString(buffer));
+            assertEquals(str[i], BufferUtil.toString(buffer), "t"+i);
         }
     }
 
@@ -134,7 +129,7 @@ public class BufferUtilTest
             BufferUtil.clearToFill(buffer);
             BufferUtil.putHexInt(buffer,val[i]);
             BufferUtil.flipToFlush(buffer,0);
-            assertEquals("t"+i,str[i],BufferUtil.toString(buffer));
+            assertEquals(str[i], BufferUtil.toString(buffer), "t"+i);
         }
     }
 
@@ -170,13 +165,9 @@ public class BufferUtilTest
         BufferUtil.append(to,from.array(),3,2);
         assertEquals("12345",BufferUtil.toString(to));
 
-        try
-        {
+        assertThrows(BufferOverflowException.class, () -> {
             BufferUtil.append(to,from.array(),0,5);
-            Assert.fail();
-        }
-        catch(BufferOverflowException e)
-        {}
+        });
     }
 
 
@@ -210,11 +201,11 @@ public class BufferUtilTest
         while (buf.remaining() > 0)
         {
             byte b = buf.get();
-            Assert.assertEquals(b,0x44);
+            assertEquals(b,0x44);
             count++;
         }
 
-        Assert.assertEquals("Count of bytes",arr.length,count);
+        assertEquals(arr.length, count, "Count of bytes");
     }
 
     @Test
@@ -231,17 +222,17 @@ public class BufferUtilTest
         while (buf.remaining() > 0)
         {
             byte b = buf.get();
-            Assert.assertEquals(b,0x77);
+            assertEquals(b,0x77);
             count++;
         }
 
-        Assert.assertEquals("Count of bytes",length,count);
+        assertEquals(length, count, "Count of bytes");
     }
 
     private static final Logger LOG = Log.getLogger(BufferUtilTest.class);
 
     @Test
-    @Ignore("Very simple microbenchmark to compare different writeTo implementations. Only for development thus " +
+    @Disabled("Very simple microbenchmark to compare different writeTo implementations. Only for development thus " +
             "ignored.")
     public void testWriteToMicrobenchmark() throws IOException
     {
@@ -296,6 +287,7 @@ public class BufferUtilTest
 
 
     @Test
+    @SuppressWarnings("ReferenceEquality")
     public void testEnsureCapacity() throws Exception
     {
         ByteBuffer b = BufferUtil.toBuffer("Goodbye Cruel World");
@@ -325,7 +317,18 @@ public class BufferUtilTest
         assertEquals(64, b3.capacity());
         assertEquals("Cruel", BufferUtil.toString(b3));
         assertEquals(0, b3.arrayOffset());
+    }
 
+    @Test
+    public void testToDetail_WithDEL()
+    {
+        ByteBuffer b = ByteBuffer.allocate(40);
+        b.putChar('a').putChar('b').putChar('c');
+        b.put((byte)0x7F);
+        b.putChar('x').putChar('y').putChar('z');
+        b.flip();
+        String result = BufferUtil.toDetailString(b);
+        assertThat("result", result, containsString("\\x7f"));
     }
 
 
@@ -338,40 +341,5 @@ public class BufferUtilTest
         BufferUtil.append(buffer, bytes, 0, capacity);
         BufferUtil.writeTo(buffer.asReadOnlyBuffer(), out);
         assertThat("Bytes in out equal bytes in buffer", Arrays.equals(bytes, out.toByteArray()), is(true));
-    }
-
-    @Test
-    public void testMappedFile() throws Exception
-    {
-        String data="Now is the time for all good men to come to the aid of the party";
-        File file = File.createTempFile("test",".txt");
-        file.deleteOnExit();
-        try(FileWriter out = new FileWriter(file);)
-        {
-            out.write(data);
-        }
-
-        ByteBuffer mapped = BufferUtil.toMappedBuffer(file);
-        assertEquals(data,BufferUtil.toString(mapped));
-        assertTrue(BufferUtil.isMappedBuffer(mapped));
-
-        ByteBuffer direct = BufferUtil.allocateDirect(data.length());
-        BufferUtil.clearToFill(direct);
-        direct.put(data.getBytes(StandardCharsets.ISO_8859_1));
-        BufferUtil.flipToFlush(direct, 0);
-        assertEquals(data,BufferUtil.toString(direct));
-        assertFalse(BufferUtil.isMappedBuffer(direct));
-
-        ByteBuffer slice = direct.slice();
-        assertEquals(data,BufferUtil.toString(slice));
-        assertFalse(BufferUtil.isMappedBuffer(slice));
-
-        ByteBuffer duplicate = direct.duplicate();
-        assertEquals(data,BufferUtil.toString(duplicate));
-        assertFalse(BufferUtil.isMappedBuffer(duplicate));
-
-        ByteBuffer readonly = direct.asReadOnlyBuffer();
-        assertEquals(data,BufferUtil.toString(readonly));
-        assertFalse(BufferUtil.isMappedBuffer(readonly));
     }
 }

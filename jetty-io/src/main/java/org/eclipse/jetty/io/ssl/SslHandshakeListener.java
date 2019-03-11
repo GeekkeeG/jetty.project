@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,6 +22,7 @@ import java.util.EventListener;
 import java.util.EventObject;
 
 import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLException;
 
 /**
  * <p>Implementations of this interface are notified of TLS handshake events.</p>
@@ -36,7 +37,7 @@ public interface SslHandshakeListener extends EventListener
      *
      * @param event the event object carrying information about the TLS handshake event
      */
-    default void handshakeSucceeded(Event event)
+    default void handshakeSucceeded(Event event) throws SSLException
     {
     }
 

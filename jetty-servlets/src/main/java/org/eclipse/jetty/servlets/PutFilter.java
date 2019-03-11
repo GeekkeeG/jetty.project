@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -78,6 +78,7 @@ public class PutFilter implements Filter
 
 
     /* ------------------------------------------------------------ */
+    @Override
     public void init(FilterConfig config) throws ServletException
     {
         _context=config.getServletContext();
@@ -118,6 +119,7 @@ public class PutFilter implements Filter
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException
     {
         HttpServletRequest request=(HttpServletRequest)req;
@@ -179,6 +181,7 @@ public class PutFilter implements Filter
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void destroy()
     {
     }
@@ -295,7 +298,7 @@ public class PutFilter implements Filter
     public void handleMove(HttpServletRequest request, HttpServletResponse response, String pathInContext, File file)
         throws ServletException, IOException, URISyntaxException
     {
-        String newPath = URIUtil.canonicalPath(request.getHeader("new-uri"));
+        String newPath = URIUtil.canonicalEncodedPath(request.getHeader("new-uri"));
         if (newPath == null)
         {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST);
@@ -312,7 +315,7 @@ public class PutFilter implements Filter
         if (contextPath != null)
             newInfo = newInfo.substring(contextPath.length());
 
-        String new_resource = URIUtil.addPaths(_baseURI,newInfo);
+        String new_resource = URIUtil.addEncodedPaths(_baseURI,newInfo);
         File new_file=new File(new URI(new_resource));
 
         file.renameTo(new_file);

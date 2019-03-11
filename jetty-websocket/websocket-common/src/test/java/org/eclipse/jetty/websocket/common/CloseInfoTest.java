@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,19 +22,16 @@ import static org.eclipse.jetty.websocket.api.StatusCode.FAILED_TLS_HANDSHAKE;
 import static org.eclipse.jetty.websocket.api.StatusCode.NORMAL;
 import static org.eclipse.jetty.websocket.api.StatusCode.NO_CLOSE;
 import static org.eclipse.jetty.websocket.api.StatusCode.NO_CODE;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.nio.ByteBuffer;
 
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.StringUtil;
-import org.eclipse.jetty.websocket.api.ProtocolException;
 import org.eclipse.jetty.websocket.common.frames.CloseFrame;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class CloseInfoTest
 {
@@ -99,17 +96,11 @@ public class CloseInfoTest
         assertThat("close.code",close.getStatusCode(),is(FAILED_TLS_HANDSHAKE));
         assertThat("close.reason",close.getReason(),nullValue());
 
-        try
-        {
-            @SuppressWarnings("unused")
-            CloseFrame frame = close.asFrame();
-            fail("Expected " + ProtocolException.class.getName());
-        }
-        catch (ProtocolException e)
-        {
-            // expected path
-            assertThat("ProtocolException message",e.getMessage(),containsString("not allowed (per RFC6455)"));
-        }
+        CloseFrame frame = close.asFrame();
+        assertThat("close frame op code",frame.getOpCode(),is(OpCode.CLOSE));
+        // should result in no payload
+        assertThat("close frame has payload",frame.hasPayload(),is(false));
+        assertThat("close frame payload length",frame.getPayloadLength(),is(0));
     }
 
     /**

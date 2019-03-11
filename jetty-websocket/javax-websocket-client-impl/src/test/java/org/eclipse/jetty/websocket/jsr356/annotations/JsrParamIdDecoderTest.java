@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,7 @@
 
 package org.eclipse.jetty.websocket.jsr356.annotations;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
 import java.lang.reflect.Method;
@@ -26,8 +27,8 @@ import java.util.Date;
 import org.eclipse.jetty.websocket.jsr356.MessageType;
 import org.eclipse.jetty.websocket.jsr356.decoders.DateDecoder;
 import org.eclipse.jetty.websocket.jsr356.metadata.DecoderMetadata;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class JsrParamIdDecoderTest
 {
@@ -52,6 +53,6 @@ public class JsrParamIdDecoderTest
         JsrCallable callable = getOnMessageCallableFrom(DateTextSocket.class,"onMessage");
         Param param = new Param(0,Date.class,null);
 
-        Assert.assertThat("Match for Decoder",paramId.process(param,callable),is(true));
+        assertThat("Match for Decoder",paramId.process(param,callable),is(true));
     }
 }

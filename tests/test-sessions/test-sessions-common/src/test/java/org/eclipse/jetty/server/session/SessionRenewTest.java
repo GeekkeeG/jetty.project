@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,12 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 
@@ -39,7 +39,7 @@ import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.webapp.WebAppContext;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 /**
@@ -50,9 +50,6 @@ import org.junit.Test;
 public class SessionRenewTest
 {
     protected TestServer _server;
-    
- 
-    
     
     /**
      * Tests renewing a session id when sessions are not being cached.
@@ -135,7 +132,6 @@ public class SessionRenewTest
 
             //make a request to change the sessionid
             Request request = client.newRequest("http://localhost:" + port + contextPath + servletMapping + "?action=renew");
-            request.header("Cookie", sessionCookie);
             ContentResponse renewResponse = request.send();
 
             assertEquals(HttpServletResponse.SC_OK,renewResponse.getStatus());
@@ -198,7 +194,8 @@ public class SessionRenewTest
 
     public static class TestServlet extends HttpServlet
     {
-        
+        private static final long serialVersionUID = 1L;
+
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
@@ -236,9 +233,7 @@ public class SessionRenewTest
                 assertNull(session);
 
                 if (((Session)afterSession).isIdChanged())
-                {
-                    ((org.eclipse.jetty.server.Response)response).addCookie(sessionManager.getSessionCookie(afterSession, request.getContextPath(), request.isSecure()));
-                }
+                    ((org.eclipse.jetty.server.Response)response).replaceCookie(sessionManager.getSessionCookie(afterSession, request.getContextPath(), request.isSecure()));
             }
         }
     }

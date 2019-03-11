@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -45,7 +45,8 @@ public class BundleFileLocatorHelperFactory
         try
         {
             //see if a fragment has supplied an alternative
-            helper = (BundleFileLocatorHelper) Class.forName(BundleFileLocatorHelper.CLASS_NAME).newInstance();
+            helper = (BundleFileLocatorHelper) Class.forName(BundleFileLocatorHelper.CLASS_NAME)
+                .getDeclaredConstructor().newInstance();
         }
         catch (Throwable t)
         {

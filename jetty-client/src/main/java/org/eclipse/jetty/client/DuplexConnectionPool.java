@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -35,12 +35,13 @@ import org.eclipse.jetty.client.api.Destination;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.util.component.Dumpable;
+import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.Sweeper;
 
-@ManagedObject("The connection pool")
+@ManagedObject
 public class DuplexConnectionPool extends AbstractConnectionPool implements Sweeper.Sweepable
 {
     private static final Logger LOG = Log.getLogger(DuplexConnectionPool.class);
@@ -155,6 +156,7 @@ public class DuplexConnectionPool extends AbstractConnectionPool implements Swee
         return active(connection);
     }
 
+    @Override
     public boolean release(Connection connection)
     {
         boolean closed = isClosed();
@@ -184,6 +186,7 @@ public class DuplexConnectionPool extends AbstractConnectionPool implements Swee
         return idleConnections.offerFirst(connection);
     }
 
+    @Override
     public boolean remove(Connection connection)
     {
         return remove(connection, false);
@@ -212,6 +215,7 @@ public class DuplexConnectionPool extends AbstractConnectionPool implements Swee
         return removed;
     }
 
+    @Override
     public void close()
     {
         super.close();
@@ -236,20 +240,24 @@ public class DuplexConnectionPool extends AbstractConnectionPool implements Swee
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        List<Connection> connections = new ArrayList<>();
+        DumpableCollection active;
+        DumpableCollection idle;
         lock();
         try
         {
-            connections.addAll(activeConnections);
-            connections.addAll(idleConnections);
+            active = new DumpableCollection("active",new ArrayList<>(activeConnections));
+            idle = new DumpableCollection("idle",new ArrayList<>(idleConnections));
         }
         finally
         {
             unlock();
         }
+        dump(out, indent, active, idle);
+    }
 
-        ContainerLifeCycle.dumpObject(out, this);
-        ContainerLifeCycle.dump(out, indent, connections);
+    protected void dump(Appendable out, String indent, Object... items) throws IOException
+    {
+        Dumpable.dumpObjects(out, indent, this, items);
     }
 
     @Override

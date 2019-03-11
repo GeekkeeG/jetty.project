@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,10 +18,12 @@
 
 package org.eclipse.jetty.server;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import javax.servlet.AsyncContext;
@@ -34,22 +36,19 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.server.session.SessionHandler;
-import org.eclipse.jetty.util.thread.Locker;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class LocalAsyncContextTest
 {
-    private final AtomicReference<Throwable> _completed0 = new AtomicReference<>();
-    private final AtomicReference<Throwable> _completed1 = new AtomicReference<>();
     protected Server _server;
     protected SuspendHandler _handler;
     protected Connector _connector;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         _server = new Server();
@@ -68,8 +67,6 @@ public class LocalAsyncContextTest
     
     public void reset()
     {
-        _completed0.set(null);
-        _completed1.set(null);
     }
 
     protected Connector initConnector()
@@ -77,7 +74,7 @@ public class LocalAsyncContextTest
         return new LocalConnector(_server);
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         _server.stop();
@@ -94,9 +91,6 @@ public class LocalAsyncContextTest
         _handler.setCompleteAfter(-1);
         response = process(null);
         check(response, "TIMEOUT");
-
-        spinAssertEquals(1, () -> _completed0.get() == null ? 0 : 1);
-        spinAssertEquals(1, () -> _completed1.get() == null ? 0 : 1);
     }
 
     @Test
@@ -225,18 +219,15 @@ public class LocalAsyncContextTest
         _handler.setCompleteAfter2(-1);
         response = process(null);
         check(response, "STARTASYNC", "DISPATCHED", "startasync", "STARTASYNC2", "DISPATCHED");
-
-        spinAssertEquals(1, () -> _completed0.get() == null ? 0 : 1);
-        spinAssertEquals(0, () -> _completed1.get() == null ? 0 : 1);
     }
 
     protected void check(String response, String... content)
     {
-        Assert.assertThat(response, Matchers.startsWith("HTTP/1.1 200 OK"));
+        assertThat(response, Matchers.startsWith("HTTP/1.1 200 OK"));
         int i = 0;
         for (String m : content)
         {
-            Assert.assertThat(response, Matchers.containsString(m));
+            assertThat(response, Matchers.containsString(m));
             i = response.indexOf(m, i);
             i += m.length();
         }
@@ -337,7 +328,6 @@ public class LocalAsyncContextTest
                 final AsyncContext asyncContext = baseRequest.startAsync();
                 response.getOutputStream().println("STARTASYNC");
                 asyncContext.addListener(__asyncListener);
-                asyncContext.addListener(__asyncListener1);
                 if (_suspendFor > 0)
                     asyncContext.setTimeout(_suspendFor);
 
@@ -479,31 +469,11 @@ public class LocalAsyncContextTest
         @Override
         public void onComplete(AsyncEvent event) throws IOException
         {
-            Throwable complete = new Throwable();
-            if (!_completed0.compareAndSet(null, complete))
-            {
-              System.err.println("First onCompleted:");
-              _completed0.get().printStackTrace();
-              System.err.println("First onCompleted:");
-              complete.printStackTrace();
-              _completed0.set(null);
-              throw new IllegalStateException();
-            }
         }
 
         @Override
         public void onError(AsyncEvent event) throws IOException
         {
-          Throwable complete = new Throwable();
-          if (!_completed0.compareAndSet(null, complete))
-          {
-            System.err.println("First onCompleted:");
-            _completed0.get().printStackTrace();
-            System.err.println("First onCompleted:");
-            complete.printStackTrace();
-            _completed0.set(null);
-            throw new IllegalStateException();
-          }
         }
 
         @Override
@@ -518,45 +488,6 @@ public class LocalAsyncContextTest
         {
             event.getSuppliedRequest().setAttribute("TIMEOUT", Boolean.TRUE);
             event.getAsyncContext().dispatch();
-        }
-    };
-
-    private AsyncListener __asyncListener1 = new AsyncListener()
-    {
-        @Override
-        public void onComplete(AsyncEvent event) throws IOException
-        {
-            Throwable complete = new Throwable();
-            if (!_completed1.compareAndSet(null, complete))
-            {
-                _completed1.get().printStackTrace();
-                complete.printStackTrace();
-                _completed1.set(null);
-                throw new IllegalStateException();
-            }
-        }
-
-        @Override
-        public void onError(AsyncEvent event) throws IOException
-        {
-            Throwable complete = new Throwable();
-            if (!_completed1.compareAndSet(null, complete))
-            {
-                _completed1.get().printStackTrace();
-                complete.printStackTrace();
-                _completed1.set(null);
-                throw new IllegalStateException();
-            }
-        }
-
-        @Override
-        public void onStartAsync(AsyncEvent event) throws IOException
-        {
-        }
-
-        @Override
-        public void onTimeout(AsyncEvent event) throws IOException
-        {
         }
     };
 
@@ -587,6 +518,6 @@ public class LocalAsyncContextTest
             now = System.nanoTime();
         }
 
-        Assert.assertEquals(expected, actual);
+        assertEquals(expected, actual);
     }
 }

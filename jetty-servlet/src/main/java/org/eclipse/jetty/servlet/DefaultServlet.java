@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -101,7 +101,7 @@ import org.eclipse.jetty.util.resource.ResourceFactory;
  *
  *  pathInfoOnly      If true, only the path info will be applied to the resourceBase
  *
- *  stylesheet	      Set with the location of an optional stylesheet that will be used
+ *  stylesheet        Set with the location of an optional stylesheet that will be used
  *                    to decorate the directory listing html.
  *
  *  etags             If True, weak etags will be generated and handled.
@@ -123,12 +123,15 @@ import org.eclipse.jetty.util.resource.ResourceFactory;
  *  otherGzipFileExtensions
  *                    Other file extensions that signify that a file is already compressed. Eg ".svgz"
  *
- *
+ *  encodingHeaderCacheSize
+ *                    Max entries in a cache of ACCEPT-ENCODING headers.
  * </pre>
  *
  */
 public class DefaultServlet extends HttpServlet implements ResourceFactory, WelcomeFactory
 {
+    public static final String CONTEXT_INIT = "org.eclipse.jetty.servlet.Default.";
+    
     private static final Logger LOG = Log.getLogger(DefaultServlet.class);
 
     private static final long serialVersionUID = 4930458713846881193L;    
@@ -371,7 +374,7 @@ public class DefaultServlet extends HttpServlet implements ResourceFactory, Welc
     @Override
     public String getInitParameter(String name)
     {
-        String value=getServletContext().getInitParameter("org.eclipse.jetty.servlet.Default."+name);
+        String value=getServletContext().getInitParameter(CONTEXT_INIT+name);
         if (value==null)
             value=super.getInitParameter(name);
         return value;
@@ -453,7 +456,8 @@ public class DefaultServlet extends HttpServlet implements ResourceFactory, Welc
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
     throws ServletException, IOException
     {
-        _resourceService.doGet(request,response);
+        if(!_resourceService.doGet(request,response))
+            response.sendError(404);
     }
 
     /* ------------------------------------------------------------ */
@@ -507,12 +511,14 @@ public class DefaultServlet extends HttpServlet implements ResourceFactory, Welc
             String welcome_in_context=URIUtil.addPaths(pathInContext,_welcomes[i]);
             Resource welcome=getResource(welcome_in_context);
             if (welcome!=null && welcome.exists())
-                return _welcomes[i];
+                return welcome_in_context;
 
             if ((_welcomeServlets || _welcomeExactServlets) && welcome_servlet==null)
             {
-                MappedResource<ServletHolder> entry=_servletHandler.getHolderEntry(welcome_in_context);
-                if (entry!=null && entry.getResource()!=_defaultHolder &&
+                MappedResource<ServletHolder> entry=_servletHandler.getMappedServlet(welcome_in_context);
+                @SuppressWarnings("ReferenceEquality")
+                boolean isDefaultHolder = (entry.getResource()!=_defaultHolder);
+                if (entry!=null && isDefaultHolder &&
                         (_welcomeServlets || (_welcomeExactServlets && entry.getPathSpec().getDeclaration().equals(welcome_in_context))))
                     welcome_servlet=welcome_in_context;
 

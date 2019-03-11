@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,7 @@
 package org.eclipse.jetty.server.ssl;
 
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;
@@ -49,9 +49,9 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class SSLSelectChannelConnectorLoadTest
 {
@@ -59,7 +59,7 @@ public class SSLSelectChannelConnectorLoadTest
     private static ServerConnector connector;
     private static SSLContext sslContext;
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         String keystorePath = System.getProperty("basedir", ".") + "/src/test/resources/keystore";
@@ -89,7 +89,7 @@ public class SSLSelectChannelConnectorLoadTest
         sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer() throws Exception
     {
         server.stop();
@@ -124,7 +124,7 @@ public class SSLSelectChannelConnectorLoadTest
             tasks[i] = threadPool.submit(workers[i]);
         }
 
-        long start = System.currentTimeMillis();
+        long start = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         while (true)
         {
             Thread.sleep(1000);
@@ -135,7 +135,7 @@ public class SSLSelectChannelConnectorLoadTest
             if (done)
                 break;
         }
-        long end = System.currentTimeMillis();
+        long end = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         //System.err.println();
         //System.err.println("Elapsed time: " + TimeUnit.MILLISECONDS.toSeconds(end - start) + "s");
 
@@ -170,7 +170,7 @@ public class SSLSelectChannelConnectorLoadTest
             tasks[i] = threadPool.submit(workers[i]);
         }
 
-        long start = System.currentTimeMillis();
+        long start = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         while (true)
         {
             Thread.sleep(1000);
@@ -181,7 +181,7 @@ public class SSLSelectChannelConnectorLoadTest
             if (done)
                 break;
         }
-        long end = System.currentTimeMillis();
+        long end = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         // System.err.println();
         // System.err.println("Elapsed time: " + TimeUnit.MILLISECONDS.toSeconds(end - start) + "s");
 

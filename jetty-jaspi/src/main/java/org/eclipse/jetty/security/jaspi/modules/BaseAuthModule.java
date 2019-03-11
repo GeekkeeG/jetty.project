@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -53,6 +53,7 @@ public class BaseAuthModule implements ServerAuthModule, ServerAuthContext
 
     protected CallbackHandler callbackHandler;
 
+    @Override
     public Class[] getSupportedMessageTypes()
     {
         return SUPPORTED_MESSAGE_TYPES;
@@ -67,11 +68,13 @@ public class BaseAuthModule implements ServerAuthModule, ServerAuthContext
         this.callbackHandler = callbackHandler;
     }
 
+    @Override
     public void initialize(MessagePolicy requestPolicy, MessagePolicy responsePolicy, CallbackHandler handler, Map options) throws AuthException
     {
         this.callbackHandler = handler;
     }
 
+    @Override
     public void cleanSubject(MessageInfo messageInfo, Subject subject) throws AuthException
     {
         // TODO apparently we either get the LoginCallback or the LoginService
@@ -88,12 +91,14 @@ public class BaseAuthModule implements ServerAuthModule, ServerAuthContext
         // }
     }
 
+    @Override
     public AuthStatus secureResponse(MessageInfo messageInfo, Subject serviceSubject) throws AuthException
     {
         // servlets do not need secured responses
         return AuthStatus.SEND_SUCCESS;
     }
 
+    @Override
     public AuthStatus validateRequest(MessageInfo messageInfo, Subject clientSubject, Subject serviceSubject) throws AuthException
     {
         return AuthStatus.SEND_FAILURE;
@@ -107,7 +112,7 @@ public class BaseAuthModule implements ServerAuthModule, ServerAuthContext
     {
         String mandatory = (String) messageInfo.getMap().get(JaspiMessageInfo.MANDATORY_KEY);
         if (mandatory == null) return false;
-        return Boolean.valueOf(mandatory);
+        return Boolean.parseBoolean(mandatory);
     }
 
     protected boolean login(Subject clientSubject, String credentials, 

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,6 +21,7 @@ package org.eclipse.jetty.client;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
@@ -28,7 +29,7 @@ import org.eclipse.jetty.client.api.Response;
 import org.eclipse.jetty.client.api.Result;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.util.Callback;
-import org.eclipse.jetty.util.IteratingNestedCallback;
+import org.eclipse.jetty.util.CountingCallback;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
@@ -38,10 +39,8 @@ public class ResponseNotifier
 
     public void notifyBegin(List<Response.ResponseListener> listeners, Response response)
     {
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.BeginListener)
                 notifyBegin((Response.BeginListener)listener, response);
         }
@@ -62,10 +61,8 @@ public class ResponseNotifier
     public boolean notifyHeader(List<Response.ResponseListener> listeners, Response response, HttpField field)
     {
         boolean result = true;
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.HeaderListener)
                 result &= notifyHeader((Response.HeaderListener)listener, response, field);
         }
@@ -87,10 +84,8 @@ public class ResponseNotifier
 
     public void notifyHeaders(List<Response.ResponseListener> listeners, Response response)
     {
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.HeadersListener)
                 notifyHeaders((Response.HeadersListener)listener, response);
         }
@@ -110,11 +105,25 @@ public class ResponseNotifier
 
     public void notifyContent(List<Response.ResponseListener> listeners, Response response, ByteBuffer buffer, Callback callback)
     {
-        // Here we use an IteratingNestedCallback not to avoid the stack overflow, but to
-        // invoke the listeners one after the other. When all of them have invoked the
-        // callback they got passed, the callback passed to this method is finally invoked.
-        ContentCallback contentCallback = new ContentCallback(listeners, response, buffer, callback);
-        contentCallback.iterate();
+        List<Response.AsyncContentListener> contentListeners = listeners.stream()
+                .filter(Response.AsyncContentListener.class::isInstance)
+                .map(Response.AsyncContentListener.class::cast)
+                .collect(Collectors.toList());
+        notifyContent(response, buffer, callback, contentListeners);
+    }
+
+    public void notifyContent(Response response, ByteBuffer buffer, Callback callback, List<Response.AsyncContentListener> contentListeners)
+    {
+        if (contentListeners.isEmpty())
+        {
+            callback.succeeded();
+        }
+        else
+        {
+            CountingCallback counter = new CountingCallback(callback, contentListeners.size());
+            for (Response.AsyncContentListener listener : contentListeners)
+                notifyContent(listener, response, buffer.slice(), counter);
+        }
     }
 
     private void notifyContent(Response.AsyncContentListener listener, Response response, ByteBuffer buffer, Callback callback)
@@ -131,10 +140,8 @@ public class ResponseNotifier
 
     public void notifySuccess(List<Response.ResponseListener> listeners, Response response)
     {
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.SuccessListener)
                 notifySuccess((Response.SuccessListener)listener, response);
         }
@@ -154,10 +161,8 @@ public class ResponseNotifier
 
     public void notifyFailure(List<Response.ResponseListener> listeners, Response response, Throwable failure)
     {
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.FailureListener)
                 notifyFailure((Response.FailureListener)listener, response, failure);
         }
@@ -177,10 +182,8 @@ public class ResponseNotifier
 
     public void notifyComplete(List<Response.ResponseListener> listeners, Result result)
     {
-        // Optimized to avoid allocations of iterator instances
-        for (int i = 0; i < listeners.size(); ++i)
+        for (Response.ResponseListener listener : listeners)
         {
-            Response.ResponseListener listener = listeners.get(i);
             if (listener instanceof Response.CompleteListener)
                 notifyComplete((Response.CompleteListener)listener, result);
         }
@@ -238,52 +241,5 @@ public class ResponseNotifier
     {
         forwardFailure(listeners, response, responseFailure);
         notifyComplete(listeners, new Result(request, requestFailure, response, responseFailure));
-    }
-
-    private class ContentCallback extends IteratingNestedCallback
-    {
-        private final List<Response.ResponseListener> listeners;
-        private final Response response;
-        private final ByteBuffer buffer;
-        private int index;
-
-        private ContentCallback(List<Response.ResponseListener> listeners, Response response, ByteBuffer buffer, Callback callback)
-        {
-            super(callback);
-            this.listeners = listeners;
-            this.response = response;
-            // Slice the buffer to avoid that listeners peek into data they should not look at.
-            this.buffer = buffer.slice();
-        }
-
-        @Override
-        protected Action process() throws Exception
-        {
-            if (index == listeners.size())
-                return Action.SUCCEEDED;
-
-            Response.ResponseListener listener = listeners.get(index);
-            if (listener instanceof Response.AsyncContentListener)
-            {
-                // The buffer was sliced, so we always clear it
-                // (clear => position=0, limit=capacity) before
-                // passing it to the listener that may consume it.
-                buffer.clear();
-                ResponseNotifier.this.notifyContent((Response.AsyncContentListener)listener, response, buffer, this);
-                return Action.SCHEDULED;
-            }
-            else
-            {
-                succeeded();
-                return Action.SCHEDULED;
-            }
-        }
-
-        @Override
-        public void succeeded()
-        {
-            ++index;
-            super.succeeded();
-        }
     }
 }

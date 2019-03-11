@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[startup-overview]]
 === Startup Overview
@@ -59,7 +61,7 @@ Modules::
   Modules also use their dependencies to control the ordering of libraries and XML files.
   There are several module files included with the Jetty distribution that cover the most common server features, such as HTTP, HTTPS, SSL, Logging, Annotations...etc.
   These module files should *only* be edited if you are making structural changes to the way the feature will perform.
-  For more information, refer to the section on <<startup-modules,managing startup modules>> later in this chapter.
+  For more information, refer to the section on link:#startup-modules[managing startup modules] later in this chapter.
 XML Files::
   XML files in either Jetty IoC or Spring format instantiate the actual POJO components of the server.
   This includes all major components such as connectors, keystores, session managers, and data sources.

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,49 +18,38 @@
 
 package org.eclipse.jetty.websocket.jsr356.server;
 
-import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 
-import java.io.IOException;
 import java.net.URI;
-import java.util.Queue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
-import org.eclipse.jetty.toolchain.test.TestingDir;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.log.StacklessLogging;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
+import org.eclipse.jetty.websocket.common.test.Timeouts;
 import org.eclipse.jetty.websocket.jsr356.annotations.JsrEvents;
 import org.eclipse.jetty.websocket.jsr356.server.samples.idletimeout.IdleTimeoutContextListener;
 import org.eclipse.jetty.websocket.jsr356.server.samples.idletimeout.OnOpenIdleTimeoutEndpoint;
 import org.eclipse.jetty.websocket.jsr356.server.samples.idletimeout.OnOpenIdleTimeoutSocket;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class IdleTimeoutTest
 {
     private static final Logger LOG = Log.getLogger(IdleTimeoutTest.class);
 
-    @Rule
-    public TestingDir testdir = new TestingDir();
-
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("Test");
-
     private static WSServer server;
 
-    @BeforeClass
+    @BeforeAll
     public static void setupServer() throws Exception
     {
         server = new WSServer(MavenTestingUtils.getTargetTestingDir(IdleTimeoutTest.class.getName()),"app");
@@ -79,21 +68,21 @@ public class IdleTimeoutTest
         // wsb.dump();
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         server.stop();
     }
 
-    private void assertConnectionTimeout(URI uri) throws Exception, IOException, InterruptedException, ExecutionException, TimeoutException
+    private void assertConnectionTimeout(URI uri) throws Exception
     {
-        WebSocketClient client = new WebSocketClient(bufferPool);
+        WebSocketClient client = new WebSocketClient();
         try
         {
             client.start();
             JettyEchoSocket clientEcho = new JettyEchoSocket();
             if (LOG.isDebugEnabled())
-                LOG.debug("Client Attempting to connnect");
+                LOG.debug("Client Attempting to connect");
             Future<Session> future = client.connect(clientEcho,uri);
             // wait for connect
             future.get(1,TimeUnit.SECONDS);
@@ -111,10 +100,12 @@ public class IdleTimeoutTest
                 clientEcho.sendMessage("You shouldn't be there");
                 try
                 {
-                    Queue<String> msgs = clientEcho.awaitMessages(1);
-                    assertThat("Should not have received messages echoed back",msgs,is(empty()));
+                    LinkedBlockingQueue<String> msgs = clientEcho.incomingMessages;
+                    // should not have a message.
+                    String received = msgs.poll(Timeouts.POLL_EVENT, Timeouts.POLL_EVENT_UNIT);
+                    assertThat("Should not have received messages echoed back",received,is(nullValue()));
                 }
-                catch (TimeoutException | InterruptedException e)
+                catch (InterruptedException e)
                 {
                     // valid success path
                 }
@@ -129,7 +120,7 @@ public class IdleTimeoutTest
     @Test
     public void testAnnotated() throws Exception
     {
-        try(StacklessLogging stackless = new StacklessLogging(JsrEvents.class))
+        try(StacklessLogging ignored = new StacklessLogging(JsrEvents.class))
         {
             URI uri = server.getServerBaseURI();
             assertConnectionTimeout(uri.resolve("idle-onopen-socket"));

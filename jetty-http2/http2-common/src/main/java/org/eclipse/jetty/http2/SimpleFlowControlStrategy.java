@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -52,10 +52,10 @@ public class SimpleFlowControlStrategy extends AbstractFlowControlStrategy
         Frame[] streamFrame = Frame.EMPTY_ARRAY;
         if (stream != null)
         {
-            if (stream.isClosed())
+            if (stream.isRemotelyClosed())
             {
                 if (LOG.isDebugEnabled())
-                    LOG.debug("Data consumed, ignoring update stream recv window by {} for closed {}", length, stream);
+                    LOG.debug("Data consumed, ignoring update stream recv window by {} for remotely closed {}", length, stream);
             }
             else
             {

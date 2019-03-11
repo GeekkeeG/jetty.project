@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -33,6 +33,7 @@ public class MockAppProvider extends AbstractLifeCycle implements AppProvider
     private DeploymentManager deployMan;
     private File webappsDir;
 
+    @Override
     public void setDeploymentManager(DeploymentManager deploymentManager)
     {
         this.deployMan = deploymentManager;
@@ -50,6 +51,7 @@ public class MockAppProvider extends AbstractLifeCycle implements AppProvider
         this.deployMan.addApp(app);
     }
 
+    @Override
     public ContextHandler createContextHandler(App app) throws Exception
     {
         WebAppContext context = new WebAppContext();

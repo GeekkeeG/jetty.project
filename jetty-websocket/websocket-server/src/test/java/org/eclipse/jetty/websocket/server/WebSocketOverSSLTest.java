@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,42 +18,36 @@
 
 package org.eclipse.jetty.websocket.server;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
 
 import java.net.URI;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.toolchain.test.EventQueue;
-import org.eclipse.jetty.toolchain.test.TestTracker;
+import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.websocket.api.BatchMode;
 import org.eclipse.jetty.websocket.api.RemoteEndpoint;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
+import org.eclipse.jetty.websocket.common.test.Timeouts;
 import org.eclipse.jetty.websocket.server.helper.CaptureSocket;
 import org.eclipse.jetty.websocket.server.helper.SessionServlet;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class WebSocketOverSSLTest
 {
     public static final int CONNECT_TIMEOUT = 15000;
     public static final int FUTURE_TIMEOUT_SEC = 30;
-    @Rule
-    public TestTracker tracker = new TestTracker();
-    
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("Test");
+    public ByteBufferPool bufferPool = new MappedByteBufferPool();
 
     private static SimpleServletServer server;
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         server = new SimpleServletServer(new SessionServlet());
@@ -61,7 +55,7 @@ public class WebSocketOverSSLTest
         server.start();
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         server.stop();
@@ -74,7 +68,7 @@ public class WebSocketOverSSLTest
     @Test
     public void testEcho() throws Exception
     {
-        Assert.assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
+        assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
         WebSocketClient client = new WebSocketClient(server.getSslContextFactory(),null,bufferPool);
         try
         {
@@ -96,9 +90,8 @@ public class WebSocketOverSSLTest
                 remote.flush();
 
             // Read frame (hopefully text frame)
-            clientSocket.messages.awaitEventCount(1,30,TimeUnit.SECONDS);
-            EventQueue<String> captured = clientSocket.messages;
-            Assert.assertThat("Text Message",captured.poll(),is(msg));
+            LinkedBlockingQueue<String> captured = clientSocket.messages;
+            assertThat("Text Message",captured.poll(Timeouts.POLL_EVENT, Timeouts.POLL_EVENT_UNIT),is(msg));
 
             // Shutdown the socket
             clientSocket.close();
@@ -116,7 +109,7 @@ public class WebSocketOverSSLTest
     @Test
     public void testServerSessionIsSecure() throws Exception
     {
-        Assert.assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
+        assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
         WebSocketClient client = new WebSocketClient(server.getSslContextFactory(),null,bufferPool);
         try
         {
@@ -138,9 +131,8 @@ public class WebSocketOverSSLTest
                 remote.flush();
 
             // Read frame (hopefully text frame)
-            clientSocket.messages.awaitEventCount(1,30,TimeUnit.SECONDS);
-            EventQueue<String> captured = clientSocket.messages;
-            Assert.assertThat("Server.session.isSecure",captured.poll(),is("session.isSecure=true"));
+            LinkedBlockingQueue<String> captured = clientSocket.messages;
+            assertThat("Server.session.isSecure",captured.poll(Timeouts.POLL_EVENT, Timeouts.POLL_EVENT_UNIT),is("session.isSecure=true"));
 
             // Shutdown the socket
             clientSocket.close();
@@ -158,7 +150,7 @@ public class WebSocketOverSSLTest
     @Test
     public void testServerSessionRequestURI() throws Exception
     {
-        Assert.assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
+        assertThat("server scheme",server.getServerUri().getScheme(),is("wss"));
         WebSocketClient client = new WebSocketClient(server.getSslContextFactory(),null,bufferPool);
         try
         {
@@ -180,10 +172,9 @@ public class WebSocketOverSSLTest
                 remote.flush();
 
             // Read frame (hopefully text frame)
-            clientSocket.messages.awaitEventCount(1,30,TimeUnit.SECONDS);
-            EventQueue<String> captured = clientSocket.messages;
+            LinkedBlockingQueue<String> captured = clientSocket.messages;
             String expected = String.format("session.upgradeRequest.requestURI=%s",requestUri.toASCIIString());
-            Assert.assertThat("session.upgradeRequest.requestURI",captured.poll(),is(expected));
+            assertThat("session.upgradeRequest.requestURI",captured.poll(Timeouts.POLL_EVENT, Timeouts.POLL_EVENT_UNIT),is(expected));
 
             // Shutdown the socket
             clientSocket.close();

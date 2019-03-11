@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,6 @@
 package org.eclipse.jetty.server;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -33,7 +32,6 @@ import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.ManagedOperation;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
 import org.eclipse.jetty.util.component.Container;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.statistic.CounterStatistic;
 import org.eclipse.jetty.util.statistic.SampleStatistic;
@@ -80,10 +78,10 @@ public class ConnectorStatistics extends AbstractLifeCycle implements Dumpable, 
         {
             long msgsIn=connection.getMessagesIn();
             long msgsOut=connection.getMessagesOut();
-            _messagesIn.set(msgsIn);
-            _messagesOut.set(msgsOut);
+            _messagesIn.record(msgsIn);
+            _messagesOut.record(msgsOut);
             _connectionStats.decrement();
-            _connectionDurationStats.set(System.currentTimeMillis()-connection.getCreatedTimeStamp());
+            _connectionDurationStats.record(System.currentTimeMillis()-connection.getCreatedTimeStamp());
 
             Sample sample=_samples.remove(connection);
             if (sample!=null)
@@ -240,14 +238,17 @@ public class ConnectorStatistics extends AbstractLifeCycle implements Dumpable, 
     @ManagedOperation("dump thread state")
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
 
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        ContainerLifeCycle.dumpObject(out,this);
-        ContainerLifeCycle.dump(out,indent,Arrays.asList(new String[]{"connections="+_connectionStats,"duration="+_connectionDurationStats,"in="+_messagesIn,"out="+_messagesOut}));
+        Dumpable.dumpObjects(out,indent,this,
+            "connections="+_connectionStats,
+            "duration="+_connectionDurationStats,
+            "in="+_messagesIn,
+            "out="+_messagesOut);
     }
     
     public static void addToAllConnectors(Server server)

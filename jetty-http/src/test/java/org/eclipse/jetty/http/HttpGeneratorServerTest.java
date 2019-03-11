@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,20 +18,20 @@
 
 package org.eclipse.jetty.http;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.ByteBuffer;
 import java.util.function.Supplier;
 
 import org.eclipse.jetty.util.BufferUtil;
-import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class HttpGeneratorServerTest
 { 
@@ -155,7 +155,7 @@ public class HttpGeneratorServerTest
         assertEquals(HttpGenerator.Result.NEED_INFO, result);
         assertEquals(HttpGenerator.State.START, gen.getState());
 
-        MetaData.Response info = new MetaData.Response(HttpVersion.HTTP_1_1, 200, null, new HttpFields(), 10);
+        MetaData.Response info = new MetaData.Response(HttpVersion.HTTP_1_1, 200, "ØÆ", new HttpFields(), 10);
         info.getFields().add("Content-Type", "test/data;\r\nextra=value");
         info.getFields().add("Last-Modified", DateGenerator.__01Jan1970);
 
@@ -176,7 +176,7 @@ public class HttpGeneratorServerTest
                 
         assertEquals(10, gen.getContentPrepared());
         
-        assertThat(response, containsString("HTTP/1.1 200 OK"));
+        assertThat(response, containsString("HTTP/1.1 200 ØÆ"));
         assertThat(response, containsString("Last-Modified: Thu, 01 Jan 1970 00:00:00 GMT"));
         assertThat(response, containsString("Content-Type: test/data;  extra=value"));
         assertThat(response, containsString("Content-Length: 10"));
@@ -249,15 +249,10 @@ public class HttpGeneratorServerTest
         result = gen.generateResponse(info, false, null, null, null, true);
         assertEquals(HttpGenerator.Result.NEED_HEADER, result);
 
-        try
-        {
+        BadMessageException e = assertThrows(BadMessageException.class, ()->{
             gen.generateResponse(info, false, header, null, null, true);
-            Assert.fail();
-        }
-        catch(BadMessageException e)
-        {
-            assertEquals(e._code,500);
-        }
+        });
+        assertEquals(500, e._code);
     }
 
     @Test
@@ -833,9 +828,9 @@ public class HttpGeneratorServerTest
         MetaData.Response info = new MetaData.Response(HttpVersion.HTTP_1_0, 200, "OK", fields, -1);
         ByteBuffer header = BufferUtil.allocate(4096);
         HttpGenerator.Result result = generator.generateResponse(info, false, header, null, null, true);
-        Assert.assertSame(HttpGenerator.Result.FLUSH, result);
+        assertSame(HttpGenerator.Result.FLUSH, result);
         String headers = BufferUtil.toString(header);
-        Assert.assertTrue(headers.contains(HttpHeaderValue.KEEP_ALIVE.asString()));
-        Assert.assertTrue(headers.contains(customValue));
+        assertThat(headers, containsString(HttpHeaderValue.KEEP_ALIVE.asString()));
+        assertThat(headers, containsString(customValue));
     }
 }

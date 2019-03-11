@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -40,7 +40,6 @@ import org.eclipse.jetty.plus.jndi.NamingEntryUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.webapp.AbstractConfiguration;
-import org.eclipse.jetty.webapp.Configuration;
 import org.eclipse.jetty.webapp.WebAppClassLoader;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.eclipse.jetty.xml.XmlConfiguration;
@@ -99,10 +98,12 @@ public class EnvConfiguration extends AbstractConfiguration
                 final List<Bound> bindings = new ArrayList<Bound>();
                 NamingContext.Listener listener = new NamingContext.Listener()
                 {
+                    @Override
                     public void unbind(NamingContext ctx, Binding binding)
                     {
                     }
 
+                    @Override
                     public Binding bind(NamingContext ctx, Binding binding)
                     {
                         bindings.add(new Bound(ctx,binding.getName()));
@@ -114,6 +115,7 @@ public class EnvConfiguration extends AbstractConfiguration
                 {
                     localContextRoot.getRoot().addListener(listener);
                     XmlConfiguration configuration = new XmlConfiguration(jettyEnvXmlUrl);
+                    configuration.setJettyStandardIdsAndProperties(context.getServer(), null);
                     WebAppClassLoader.runWithServerClassAccess(()->{configuration.configure(context);return null;});
                 }
                 finally

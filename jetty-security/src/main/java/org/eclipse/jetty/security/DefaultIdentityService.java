@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -48,40 +48,47 @@ public class DefaultIdentityService implements IdentityService
      * If there are roles refs present in the scope, then wrap the UserIdentity
      * with one that uses the role references in the {@link UserIdentity#isUserInRole(String, org.eclipse.jetty.server.UserIdentity.Scope)}
      */
+    @Override
     public Object associate(UserIdentity user)
     {
         return null;
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void disassociate(Object previous)
     {
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public Object setRunAs(UserIdentity user, RunAsToken token)
     {
         return token;
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void unsetRunAs(Object lastToken)
     {
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public RunAsToken newRunAsToken(String runAsName)
     {
         return new RoleRunAsToken(runAsName);
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public UserIdentity getSystemUserIdentity()
     {
         return null;
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public UserIdentity newUserIdentity(final Subject subject, final Principal userPrincipal, final String[] roles)
     {
         return new DefaultUserIdentity(subject,userPrincipal,roles);

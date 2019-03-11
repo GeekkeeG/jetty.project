@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,9 @@
 //
 
 package org.eclipse.jetty.servlet;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -41,12 +44,9 @@ import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.LocalConnector;
 import org.eclipse.jetty.server.Server;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-
-import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertThat;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class ComplianceViolations2616Test
 {
@@ -102,7 +102,7 @@ public class ComplianceViolations2616Test
         }
     }
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         server = new Server();
@@ -110,7 +110,7 @@ public class ComplianceViolations2616Test
         HttpConfiguration config = new HttpConfiguration();
         config.setSendServerVersion(false);
 
-        HttpConnectionFactory httpConnectionFactory = new HttpConnectionFactory(config, HttpCompliance.RFC2616);
+        HttpConnectionFactory httpConnectionFactory = new HttpConnectionFactory(config, HttpCompliance.RFC2616_LEGACY);
         httpConnectionFactory.setRecordHttpComplianceViolations(true);
         connector = new LocalConnector(server, null, null, null, -1, httpConnectionFactory);
 
@@ -127,7 +127,7 @@ public class ComplianceViolations2616Test
         server.start();
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer() throws Exception
     {
         server.stop();
@@ -145,10 +145,9 @@ public class ComplianceViolations2616Test
         req1.append("Connection: close\r\n");
         req1.append("\r\n");
 
-        String response = connector.getResponses(req1.toString());
+        String response = connector.getResponse(req1.toString());
         assertThat("Response status", response, containsString("HTTP/1.1 200 OK"));
-        assertThat("Response headers", response, containsString("X-Http-Violation-0: RFC2616<RFC7230: name only header"));
-
+        assertThat("Response headers", response, containsString("X-Http-Violation-0: Fields must have a Colon"));   
         assertThat("Response body", response, containsString("[Name] = []"));
     }
 
@@ -163,10 +162,9 @@ public class ComplianceViolations2616Test
         req1.append("Name\r\n");
         req1.append("\r\n");
 
-        String response = connector.getResponses(req1.toString());
+        String response = connector.getResponse(req1.toString());
         assertThat("Response status", response, containsString("HTTP/1.1 200"));
-        assertThat("Response headers", response, containsString("X-Http-Violation-0: RFC2616<RFC7230: name only header"));
-
+        assertThat("Response headers", response, containsString("X-Http-Violation-0: Fields must have a Colon"));        
         assertThat("Response body", response, containsString("[Name] = []"));
     }
 
@@ -182,10 +180,10 @@ public class ComplianceViolations2616Test
         req1.append("Accept: */*\r\n");
         req1.append("\r\n");
 
-        String response = connector.getResponses(req1.toString());
+        String response = connector.getResponse(req1.toString());
         assertThat("Response status", response, containsString("HTTP/1.1 200"));
-        assertThat("Response headers", response, containsString("X-Http-Violation-0: RFC2616<RFC7230: header folding"));
-
+        assertThat("Response headers", response, containsString("X-Http-Violation-0: No line Folding"));        
         assertThat("Response body", response, containsString("[Name] = [Some Value]"));
+        
     }
 }

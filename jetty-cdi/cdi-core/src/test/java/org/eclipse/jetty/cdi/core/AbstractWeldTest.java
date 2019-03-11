@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,8 +25,8 @@ import javax.enterprise.inject.spi.Bean;
 
 import org.jboss.weld.environment.se.Weld;
 import org.jboss.weld.environment.se.WeldContainer;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 public abstract class AbstractWeldTest
 {
@@ -42,14 +42,14 @@ public abstract class AbstractWeldTest
         }
     }
 
-    @BeforeClass
+    @BeforeAll
     public static void initWeld()
     {
         weld = new Weld();
         container = weld.initialize();
     }
 
-    @AfterClass
+    @AfterAll
     public static void shutdownWeld()
     {
         weld.shutdown();

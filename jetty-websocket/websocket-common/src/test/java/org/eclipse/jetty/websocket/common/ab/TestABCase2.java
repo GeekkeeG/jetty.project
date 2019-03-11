@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,8 +17,6 @@
 //
 
 package org.eclipse.jetty.websocket.common.ab;
-
-import static org.hamcrest.Matchers.is;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -38,12 +36,17 @@ import org.eclipse.jetty.websocket.common.test.ByteBufferAssert;
 import org.eclipse.jetty.websocket.common.test.IncomingFramesCapture;
 import org.eclipse.jetty.websocket.common.test.UnitGenerator;
 import org.eclipse.jetty.websocket.common.test.UnitParser;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class TestABCase2
 {
-    WebSocketPolicy policy = new WebSocketPolicy(WebSocketBehavior.CLIENT);
+    private WebSocketPolicy policy = new WebSocketPolicy(WebSocketBehavior.CLIENT);
 
     @Test
     public void testGenerate125OctetPingCase2_4()
@@ -98,7 +101,6 @@ public class TestABCase2
         ByteBufferAssert.assertEquals("buffers do not match",expected,actual);
     }
 
-
     @Test
     public void testGenerateEmptyPingCase2_1()
     {
@@ -113,7 +115,7 @@ public class TestABCase2
 
         expected.flip();
 
-        ByteBufferAssert.assertEquals("buffers do not match",expected,actual);
+        ByteBufferAssert.assertEquals(expected, actual, "buffers do not match");
     }
 
     @Test
@@ -138,29 +140,28 @@ public class TestABCase2
 
         expected.flip();
 
-        ByteBufferAssert.assertEquals("buffers do not match",expected,actual);
+        ByteBufferAssert.assertEquals(expected, actual, "buffers do not match");
     }
 
-    @Test( expected=WebSocketException.class )
+    @Test
     public void testGenerateOversizedBinaryPingCase2_5_A()
     {
         byte[] bytes = new byte[126];
         Arrays.fill(bytes,(byte)0x00);
 
         PingFrame pingFrame = new PingFrame();
-        pingFrame.setPayload(ByteBuffer.wrap(bytes)); // should throw exception
+        assertThrows(WebSocketException.class, ()->pingFrame.setPayload(ByteBuffer.wrap(bytes)));
     }
 
-    @Test( expected=WebSocketException.class )
+    @Test
     public void testGenerateOversizedBinaryPingCase2_5_B()
     {
         byte[] bytes = new byte[126];
         Arrays.fill(bytes, (byte)0x00);
 
         PingFrame pingFrame = new PingFrame();
-        pingFrame.setPayload(ByteBuffer.wrap(bytes)); // should throw exception
-
-        // FIXME: Remove? UnitGenerator.generate(pingFrame);
+        assertThrows(WebSocketException.class, ()->
+            pingFrame.setPayload(ByteBuffer.wrap(bytes)));
     }
 
     @Test
@@ -190,12 +191,11 @@ public class TestABCase2
         parser.setIncomingFramesHandler(capture);
         parser.parse(expected);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.PING,1);
 
         Frame pActual = capture.getFrames().poll();
-        Assert.assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(bytes.length));
-        Assert.assertEquals("PingFrame.payload",bytes.length,pActual.getPayloadLength());
+        assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(bytes.length));
+        assertEquals(bytes.length, pActual.getPayloadLength(), "PingFrame.payload");
     }
 
     @Test
@@ -220,12 +220,11 @@ public class TestABCase2
         parser.setIncomingFramesHandler(capture);
         parser.parse(expected);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.PING,1);
 
         Frame pActual = capture.getFrames().poll();
-        Assert.assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(bytes.length));
-        Assert.assertEquals("PingFrame.payload",bytes.length,pActual.getPayloadLength());
+        assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(bytes.length));
+        assertEquals(bytes.length, pActual.getPayloadLength(), "PingFrame.payload");
     }
 
     @Test
@@ -243,12 +242,11 @@ public class TestABCase2
         parser.setIncomingFramesHandler(capture);
         parser.parse(expected);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.PING,1);
 
         Frame pActual = capture.getFrames().poll();
-        Assert.assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(0));
-        Assert.assertEquals("PingFrame.payload",0,pActual.getPayloadLength());
+        assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(0));
+        assertEquals(0, pActual.getPayloadLength(), "PingFrame.payload");
     }
 
     @Test
@@ -274,12 +272,11 @@ public class TestABCase2
         parser.setIncomingFramesHandler(capture);
         parser.parse(expected);
 
-        capture.assertNoErrors();
         capture.assertHasFrame(OpCode.PING,1);
 
         Frame pActual = capture.getFrames().poll();
-        Assert.assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(message.length()));
-        Assert.assertEquals("PingFrame.payload",message.length(),pActual.getPayloadLength());
+        assertThat("PingFrame.payloadLength",pActual.getPayloadLength(),is(message.length()));
+        assertEquals(message.length(), pActual.getPayloadLength(), "PingFrame.payload");
     }
 
     @Test
@@ -315,9 +312,9 @@ public class TestABCase2
         UnitParser parser = new UnitParser(policy);
         IncomingFramesCapture capture = new IncomingFramesCapture();
         parser.setIncomingFramesHandler(capture);
-        parser.parseQuietly(expected);
 
-        Assert.assertEquals("error should be returned for too large of ping payload",1,capture.getErrorCount(ProtocolException.class));
+        ProtocolException x = assertThrows(ProtocolException.class, () -> parser.parseQuietly(expected));
+        assertThat(x.getMessage(), containsString("Invalid control frame payload length"));
     }
 
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,8 @@
 
 package org.eclipse.jetty.server;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -25,6 +27,7 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -40,16 +43,16 @@ import org.eclipse.jetty.io.SocketChannelEndPoint;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Extended Server Tester.
  */
 public class ExtendedServerTest extends HttpServerTestBase
 {
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         startServer(new ServerConnector(_server,new HttpConnectionFactory()
@@ -87,7 +90,7 @@ public class ExtendedServerTest extends HttpServerTestBase
         @Override
         public Runnable onSelected()
         {
-            _lastSelected=System.currentTimeMillis();
+            _lastSelected=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             return super.onSelected();
         }
 
@@ -101,7 +104,7 @@ public class ExtendedServerTest extends HttpServerTestBase
     {
         public ExtendedHttpConnection(HttpConfiguration config, Connector connector, EndPoint endPoint)
         {
-            super(config,connector,endPoint,HttpCompliance.RFC7230,false);
+            super(config,connector,endPoint,HttpCompliance.RFC7230_LEGACY,false);
         }
 
         @Override
@@ -128,25 +131,25 @@ public class ExtendedServerTest extends HttpServerTestBase
         {
             OutputStream os = client.getOutputStream();
 
-            long start=System.currentTimeMillis();
+            long start=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             os.write("GET / HTTP/1.0\r\n".getBytes(StandardCharsets.ISO_8859_1));
             os.flush();
             Thread.sleep(200);
-            long end=System.currentTimeMillis();
+            long end=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             os.write("\r\n".getBytes(StandardCharsets.ISO_8859_1));
             
             // Read the response.
             String response = readResponse(client);
 
-            Assert.assertThat(response, Matchers.containsString("HTTP/1.1 200 OK"));
-            Assert.assertThat(response, Matchers.containsString("DispatchedAt="));
+            assertThat(response, Matchers.containsString("HTTP/1.1 200 OK"));
+            assertThat(response, Matchers.containsString("DispatchedAt="));
             
             String s=response.substring(response.indexOf("DispatchedAt=")+13);
             s=s.substring(0,s.indexOf('\n'));
-            long dispatched=Long.valueOf(s);
+            long dispatched=Long.parseLong(s);
             
-            Assert.assertThat(dispatched, Matchers.greaterThanOrEqualTo(start));
-            Assert.assertThat(dispatched, Matchers.lessThan(end));
+            assertThat(dispatched, Matchers.greaterThanOrEqualTo(start));
+            assertThat(dispatched, Matchers.lessThan(end));
         }
     }
     

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -294,11 +294,7 @@ public class WebAppProvider extends ScanningAppProvider
                 }
             };
             
-            xmlc.getIdMap().put("Server", getDeploymentManager().getServer());
-            xmlc.getProperties().put("jetty.home",System.getProperty("jetty.home","."));
-            xmlc.getProperties().put("jetty.base",System.getProperty("jetty.base","."));
-            xmlc.getProperties().put("jetty.webapp",file.getCanonicalPath());
-            xmlc.getProperties().put("jetty.webapps",file.getParentFile().getCanonicalPath());
+            getDeploymentManager().scope(xmlc,resource);
 
             if (getConfigurationManager() != null)
                 xmlc.getProperties().putAll(getConfigurationManager().getProperties());
@@ -353,7 +349,6 @@ public class WebAppProvider extends ScanningAppProvider
 
         return webAppContext;
     }
-    
     
     /* ------------------------------------------------------------ */
     @Override
@@ -465,21 +460,6 @@ public class WebAppProvider extends ScanningAppProvider
     { 
         File file = new File(filename);
 
-        //is the file that was removed a directory? 
-        if (file.isDirectory())
-        {
-            //is there a .xml file of the same name?
-            if (exists(file.getName()+".xml")||exists(file.getName()+".XML"))
-                return; //assume we will get removed events for the xml file
-
-            //is there .war file of the same name?
-            if (exists(file.getName()+".war")||exists(file.getName()+".WAR"))
-                return; //assume we will get removed events for the war file
-
-            super.fileRemoved(filename);
-            return;
-        }
-  
         //is the file that was removed a .war file?
         String lowname = file.getName().toLowerCase(Locale.ENGLISH);
         if (lowname.endsWith(".war"))
@@ -496,7 +476,20 @@ public class WebAppProvider extends ScanningAppProvider
 
         //is the file that was removed an .xml file?
         if (lowname.endsWith(".xml"))
+        {
             super.fileRemoved(filename);
+            return;
+        }
+
+        //is there a .xml file of the same name?
+        if (exists(file.getName()+".xml")||exists(file.getName()+".XML"))
+            return; //assume we will get removed events for the xml file
+
+        //is there .war file of the same name?
+        if (exists(file.getName()+".war")||exists(file.getName()+".WAR"))
+            return; //assume we will get removed events for the war file
+
+        super.fileRemoved(filename);
     }
 
 }

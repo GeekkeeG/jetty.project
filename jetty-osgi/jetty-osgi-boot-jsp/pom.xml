@@ -2,7 +2,7 @@
   <parent>
     <groupId>org.eclipse.jetty.osgi</groupId>
     <artifactId>jetty-osgi-project</artifactId>
-    <version>9.4.4-SNAPSHOT</version>
+    <version>9.4.16-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
   <artifactId>jetty-osgi-boot-jsp</artifactId>
@@ -31,12 +31,12 @@
       <groupId>org.eclipse.osgi</groupId>
       <artifactId>org.eclipse.osgi.services</artifactId>
     </dependency>
-    <!-- Orbit Servlet Deps -->
+    <!-- Servlet Deps -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
     </dependency>
-    <!-- Orbit JSP Deps -->
+    <!-- JSP Deps -->
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
       <artifactId>apache-jsp</artifactId>

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,6 +25,8 @@ import java.net.SocketAddress;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 
@@ -55,7 +57,7 @@ import jnr.unixsocket.UnixSocketChannel;
 /**
  *
  */
-@ManagedObject("HTTP connector using NIO ByteChannels and Selectors")
+@ManagedObject("Connector using UNIX Socket")
 public class UnixSocketConnector extends AbstractConnector
 {
     private static final Logger LOG = Log.getLogger(UnixSocketConnector.class);
@@ -240,13 +242,24 @@ public class UnixSocketConnector extends AbstractConnector
     {
         if (_acceptChannel == null)
         {
+            File file = new File(_unixSocket);
+            file.deleteOnExit();
+            SocketAddress bindAddress = new UnixSocketAddress(file);
             UnixServerSocketChannel serverChannel = UnixServerSocketChannel.open();
-            SocketAddress bindAddress = new UnixSocketAddress(new File(_unixSocket));
-            serverChannel.socket().bind(bindAddress, getAcceptQueueSize());
-            serverChannel.configureBlocking(getAcceptors()>0);
-            addBean(serverChannel);
 
-            LOG.debug("opened {}",serverChannel);
+            serverChannel.configureBlocking(getAcceptors()>0);
+            try
+            {
+                serverChannel.socket().bind(bindAddress, getAcceptQueueSize());
+            }
+            catch (IOException e)
+            {
+                LOG.warn("cannot bind {} exists={} writable={}", file, file.exists(), file.canWrite());
+                throw e;
+            }
+            addBean(serverChannel);
+            if (LOG.isDebugEnabled())
+                LOG.debug("opened {}",serverChannel);
             _acceptChannel = serverChannel;
         }
     }
@@ -280,14 +293,21 @@ public class UnixSocketConnector extends AbstractConnector
                 }
             }
 
-            new File(_unixSocket).delete();
+            try
+            {
+                Files.deleteIfExists(Paths.get(_unixSocket));
+            }
+            catch ( IOException e )
+            {
+                LOG.warn(e);
+            }
         }
     }
 
     @Override
     public void accept(int acceptorID) throws IOException
     {
-        LOG.warn("Blocking UnixSocket accept used.  Cannot be interrupted!");
+        LOG.debug("Blocking UnixSocket accept used.  Might not be able to be interrupted!");
         UnixServerSocketChannel serverChannel = _acceptChannel;
         if (serverChannel != null && serverChannel.isOpen())
         {
@@ -427,9 +447,11 @@ public class UnixSocketConnector extends AbstractConnector
         @Override
         protected SelectableChannel doAccept(SelectableChannel server) throws IOException
         {
-            LOG.debug("doAccept async {}",server);
+            if (LOG.isDebugEnabled())
+                LOG.debug("doAccept async {}",server);
             UnixSocketChannel channel = ((UnixServerSocketChannel)server).accept();
-            LOG.debug("accepted async {}",channel);
+            if (LOG.isDebugEnabled())
+                LOG.debug("accepted async {}",channel);
             return channel;
         }
     }

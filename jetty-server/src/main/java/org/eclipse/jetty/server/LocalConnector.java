@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -203,11 +203,12 @@ public class LocalConnector extends AbstractConnector
         if (LOG.isDebugEnabled())
             LOG.debug("accepting {}", acceptorID);
         LocalEndPoint endPoint = _connects.take();
-        endPoint.onOpen();
-        onEndPointOpened(endPoint);
 
         Connection connection = getDefaultConnectionFactory().newConnection(this, endPoint);
         endPoint.setConnection(connection);
+        
+        endPoint.onOpen();
+        onEndPointOpened(endPoint);
 
         connection.onOpen();
     }
@@ -316,6 +317,7 @@ public class LocalConnector extends AbstractConnector
             setGrowOutput(true);
         }
         
+        @Override
         protected void execute(Runnable task)
         {
             getExecutor().execute(task);
@@ -324,7 +326,9 @@ public class LocalConnector extends AbstractConnector
         @Override
         public void onClose()
         {
-            getConnection().onClose();
+            Connection connection = getConnection();
+            if (connection!=null)
+              connection.onClose();
             LocalConnector.this.onEndPointClosed(this);
             super.onClose();
             _closed.countDown();
@@ -377,6 +381,16 @@ public class LocalConnector extends AbstractConnector
                     LOG.warn(e);
                 }
             }
+        }
+
+        /**
+         * Remaining output ByteBuffer after calls to {@link #getResponse()} or {@link #waitForResponse(boolean, long, TimeUnit)}
+         *
+         * @return the remaining response data buffer
+         */
+        public ByteBuffer getResponseData()
+        {
+            return _responseData;
         }
         
         /** 
@@ -458,11 +472,6 @@ public class LocalConnector extends AbstractConnector
                 }
                 
                 @Override
-                public void badMessage(int status, String reason)
-                {
-                }
-                
-                @Override
                 public boolean startResponse(HttpVersion version, int status, String reason)
                 {
                     return false;
@@ -515,7 +524,7 @@ public class LocalConnector extends AbstractConnector
                         }
                     }
                 }
-            
+
                 if (bout.getCount()==0 && isOutputShutdown())
                     return null;
                 return ByteBuffer.wrap(bout.getBuf(),0,bout.getCount()); 

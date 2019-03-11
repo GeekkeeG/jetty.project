@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,12 +20,11 @@ package org.eclipse.jetty.start;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import org.eclipse.jetty.start.Props.Prop;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class PropsTest
 {
@@ -36,7 +35,7 @@ public class PropsTest
         assertThat(prefix,prop,notNullValue());
         assertThat(prefix + ".key",prop.key,is(expectedKey));
         assertThat(prefix + ".value",prop.value,is(expectedValue));
-        assertThat(prefix + ".origin",prop.origin,is(expectedOrigin));
+        assertThat(prefix + ".origin",prop.source,is(expectedOrigin));
     }
 
     @Test
@@ -49,7 +48,6 @@ public class PropsTest
 
         Prop prop = props.getProp("java.io.tmpdir");
         assertProp("System Prop",prop,"java.io.tmpdir",expected,Props.ORIGIN_SYSPROP);
-        assertThat("System Prop.overrides",prop.overrides,nullValue());
     }
 
     @Test
@@ -63,25 +61,6 @@ public class PropsTest
 
         Prop prop = props.getProp("name");
         assertProp(prefix,prop,"name","jetty",FROM_TEST);
-        assertThat(prefix + ".overrides",prop.overrides,nullValue());
-    }
-
-    @Test
-    public void testOverride()
-    {
-        Props props = new Props();
-        props.setProperty("name","jetty",FROM_TEST);
-        props.setProperty("name","altjetty","(Alt-Jetty)");
-
-        String prefix = "Overriden";
-        assertThat(prefix,props.getString("name"),is("altjetty"));
-
-        Prop prop = props.getProp("name");
-        assertProp(prefix,prop,"name","altjetty","(Alt-Jetty)");
-        Prop older = prop.overrides;
-        assertThat(prefix + ".overrides",older,notNullValue());
-        assertProp(prefix + ".overridden",older,"name","jetty",FROM_TEST);
-        assertThat(prefix + ".overridden",older.overrides,nullValue());
     }
 
     @Test

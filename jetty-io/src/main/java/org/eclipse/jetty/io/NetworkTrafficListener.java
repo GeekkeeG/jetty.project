@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -81,18 +81,22 @@ public interface NetworkTrafficListener
      */
     public static class Adapter implements NetworkTrafficListener
     {
+        @Override
         public void opened(Socket socket)
         {
         }
 
+        @Override
         public void incoming(Socket socket, ByteBuffer bytes)
         {
         }
 
+        @Override
         public void outgoing(Socket socket, ByteBuffer bytes)
         {
         }
 
+        @Override
         public void closed(Socket socket)
         {
         }

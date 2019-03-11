@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -117,7 +117,7 @@ public class ResourceHttpContent implements HttpContent
     {
         return _contentType==null?null:MimeTypes.CACHE.get(MimeTypes.getContentTypeWithoutCharset(_contentType));
     }
-
+    
     /* ------------------------------------------------------------ */
     @Override
     public HttpField getLastModified()
@@ -185,7 +185,7 @@ public class ResourceHttpContent implements HttpContent
     public HttpField getContentLength()
     {
         long l=_resource.length();
-        return l==-1?null:new HttpField.LongValueHttpField(HttpHeader.CONTENT_LENGTH,_resource.length());
+        return l==-1?null:new HttpField.LongValueHttpField(HttpHeader.CONTENT_LENGTH,l);
     }
 
     /* ------------------------------------------------------------ */
@@ -227,7 +227,7 @@ public class ResourceHttpContent implements HttpContent
     @Override
     public String toString()
     {
-        return String.format("%s@%x{r=%s,c=%b}",this.getClass().getSimpleName(),hashCode(),_resource,_precompressedContents!=null);
+        return String.format("%s@%x{r=%s,ct=%s,c=%b}",this.getClass().getSimpleName(),hashCode(),_resource,_contentType,_precompressedContents!=null);
     }
 
     /* ------------------------------------------------------------ */

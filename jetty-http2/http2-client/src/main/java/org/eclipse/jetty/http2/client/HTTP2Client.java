@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,6 +20,7 @@ package org.eclipse.jetty.http2.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
@@ -33,6 +34,8 @@ import org.eclipse.jetty.alpn.client.ALPNClientConnectionFactory;
 import org.eclipse.jetty.http2.BufferingFlowControlStrategy;
 import org.eclipse.jetty.http2.FlowControlStrategy;
 import org.eclipse.jetty.http2.api.Session;
+import org.eclipse.jetty.http2.frames.Frame;
+import org.eclipse.jetty.http2.frames.SettingsFrame;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.ClientConnectionFactory;
 import org.eclipse.jetty.io.Connection;
@@ -47,11 +50,9 @@ import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.eclipse.jetty.util.thread.ExecutionStrategy;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ScheduledExecutorScheduler;
 import org.eclipse.jetty.util.thread.Scheduler;
-import org.eclipse.jetty.util.thread.strategy.ProduceConsume;
 
 /**
  * <p>{@link HTTP2Client} provides an asynchronous, non-blocking implementation
@@ -124,10 +125,15 @@ public class HTTP2Client extends ContainerLifeCycle
     private int selectors = 1;
     private long idleTimeout = 30000;
     private long connectTimeout = 10000;
+    private boolean connectBlocking;
+    private SocketAddress bindAddress;
     private int inputBufferSize = 8192;
     private List<String> protocols = Arrays.asList("h2", "h2-17", "h2-16", "h2-15", "h2-14");
-    private int initialSessionRecvWindow = FlowControlStrategy.DEFAULT_WINDOW_SIZE;
-    private int initialStreamRecvWindow = FlowControlStrategy.DEFAULT_WINDOW_SIZE;
+    private int initialSessionRecvWindow = 16 * 1024 * 1024;
+    private int initialStreamRecvWindow = 8 * 1024 * 1024;
+    private int maxFrameLength = Frame.DEFAULT_MAX_LENGTH;
+    private int maxConcurrentPushedStreams = 32;
+    private int maxSettingsKeys = SettingsFrame.DEFAULT_MAX_KEYS;
     private FlowControlStrategy.Factory flowControlStrategyFactory = () -> new BufferingFlowControlStrategy(0.5F);
 
     @Override
@@ -152,7 +158,7 @@ public class HTTP2Client extends ContainerLifeCycle
                 if (sslContextFactory != null)
                 {
                     ALPNClientConnectionFactory alpn = new ALPNClientConnectionFactory(getExecutor(), h2, getProtocols());
-                    factory = new SslClientConnectionFactory(sslContextFactory, getByteBufferPool(), getExecutor(), alpn);
+                    factory = newSslClientConnectionFactory(sslContextFactory, alpn);
                 }
                 return factory.newConnection(endPoint, context);
             });
@@ -171,6 +177,11 @@ public class HTTP2Client extends ContainerLifeCycle
     protected SelectorManager newSelectorManager()
     {
         return new ClientSelectorManager(getExecutor(), getScheduler(), getSelectors());
+    }
+
+    protected ClientConnectionFactory newSslClientConnectionFactory(SslContextFactory sslContextFactory, ClientConnectionFactory connectionFactory)
+    {
+        return new SslClientConnectionFactory(sslContextFactory, getByteBufferPool(), getExecutor(), connectionFactory);
     }
 
     public Executor getExecutor()
@@ -263,6 +274,27 @@ public class HTTP2Client extends ContainerLifeCycle
             selector.setConnectTimeout(connectTimeout);
     }
 
+    @ManagedAttribute("Whether the connect() operation is blocking")
+    public boolean isConnectBlocking()
+    {
+        return connectBlocking;
+    }
+
+    public void setConnectBlocking(boolean connectBlocking)
+    {
+        this.connectBlocking = connectBlocking;
+    }
+
+    public SocketAddress getBindAddress()
+    {
+        return bindAddress;
+    }
+
+    public void setBindAddress(SocketAddress bindAddress)
+    {
+        this.bindAddress = bindAddress;
+    }
+
     @ManagedAttribute("The size of the buffer used to read from the network")
     public int getInputBufferSize()
     {
@@ -307,6 +339,39 @@ public class HTTP2Client extends ContainerLifeCycle
         this.initialStreamRecvWindow = initialStreamRecvWindow;
     }
 
+    @ManagedAttribute("The max frame length in bytes")
+    public int getMaxFrameLength()
+    {
+        return maxFrameLength;
+    }
+
+    public void setMaxFrameLength(int maxFrameLength)
+    {
+        this.maxFrameLength = maxFrameLength;
+    }
+
+    @ManagedAttribute("The max number of concurrent pushed streams")
+    public int getMaxConcurrentPushedStreams()
+    {
+        return maxConcurrentPushedStreams;
+    }
+
+    public void setMaxConcurrentPushedStreams(int maxConcurrentPushedStreams)
+    {
+        this.maxConcurrentPushedStreams = maxConcurrentPushedStreams;
+    }
+
+    @ManagedAttribute("The max number of keys in all SETTINGS frames")
+    public int getMaxSettingsKeys()
+    {
+        return maxSettingsKeys;
+    }
+
+    public void setMaxSettingsKeys(int maxSettingsKeys)
+    {
+        this.maxSettingsKeys = maxSettingsKeys;
+    }
+
     public void connect(InetSocketAddress address, Session.Listener listener, Promise<Session> promise)
     {
         connect(null, address, listener, promise);
@@ -322,10 +387,23 @@ public class HTTP2Client extends ContainerLifeCycle
         try
         {
             SocketChannel channel = SocketChannel.open();
+            SocketAddress bindAddress = getBindAddress();
+            if (bindAddress != null)
+                channel.bind(bindAddress);
             configure(channel);
-            channel.configureBlocking(false);
+            boolean connected = true;
+            if (isConnectBlocking())
+            {
+                channel.socket().connect(address, (int)getConnectTimeout());
+                channel.configureBlocking(false);
+            }
+            else
+            {
+                channel.configureBlocking(false);
+                connected = channel.connect(address);
+            }
             context = contextFrom(sslContextFactory, address, listener, promise, context);
-            if (channel.connect(address))
+            if (connected)
                 selector.accept(channel, context);
             else
                 selector.connect(channel, context);

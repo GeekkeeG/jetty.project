@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,6 +22,8 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
+import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.StacklessLogging;
@@ -31,14 +33,11 @@ import org.eclipse.jetty.websocket.common.Generator;
 import org.eclipse.jetty.websocket.common.OpCode;
 import org.eclipse.jetty.websocket.common.WebSocketFrame;
 import org.eclipse.jetty.websocket.common.test.Fuzzed;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
 import org.eclipse.jetty.websocket.common.test.RawFrameBuilder;
 import org.eclipse.jetty.websocket.server.SimpleServletServer;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.rules.TestName;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 
 public abstract class AbstractABCase implements Fuzzed
 {
@@ -79,10 +78,9 @@ public abstract class AbstractABCase implements Fuzzed
     protected Generator laxGenerator;
     protected static SimpleServletServer server;
 
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("Test");
+    public ByteBufferPool bufferPool = new MappedByteBufferPool();
 
-    @Before
+    @BeforeEach
     public void initGenerators()
     {
         WebSocketPolicy policy = WebSocketPolicy.newClientPolicy();
@@ -90,14 +88,14 @@ public abstract class AbstractABCase implements Fuzzed
         laxGenerator = new Generator(policy,bufferPool,false);
     }
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         server = new SimpleServletServer(new ABServlet());
         server.start();
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         server.stop();
@@ -172,9 +170,6 @@ public abstract class AbstractABCase implements Fuzzed
         return ret.toString();
     }
 
-    @Rule
-    public TestName testname = new TestName();
-
     /**
      * @param clazz the class to enable
      * @param enabled true to enable the stack traces (or not)
@@ -187,6 +182,7 @@ public abstract class AbstractABCase implements Fuzzed
         log.setHideStacks(!enabled);
     }
 
+    @Override
     public Generator getLaxGenerator()
     {
         return laxGenerator;
@@ -203,12 +199,6 @@ public abstract class AbstractABCase implements Fuzzed
         return server.getServerUri();
     }
     
-    @Override
-    public String getTestMethodName()
-    {
-        return testname.getMethodName();
-    }
-
     public static byte[] masked(final byte[] data)
     {
         return RawFrameBuilder.mask(data,MASK);

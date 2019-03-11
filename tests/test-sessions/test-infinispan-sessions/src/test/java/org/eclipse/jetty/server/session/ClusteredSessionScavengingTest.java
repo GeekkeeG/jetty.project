@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,8 +20,10 @@
 package org.eclipse.jetty.server.session;
 
 import org.eclipse.jetty.session.infinispan.InfinispanSessionDataStoreFactory;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.condition.DisabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
 
 /**
  * ClusteredSessionScavengingTest
@@ -30,10 +32,9 @@ import org.junit.BeforeClass;
  */
 public class ClusteredSessionScavengingTest extends AbstractClusteredSessionScavengingTest
 {
-
     public static InfinispanTestSupport __testSupport;
     
-    @BeforeClass
+    @BeforeAll
     public static void setup () throws Exception
     {
         __testSupport = new InfinispanTestSupport();
@@ -41,14 +42,23 @@ public class ClusteredSessionScavengingTest extends AbstractClusteredSessionScav
         __testSupport.setup();
     }
     
-    @AfterClass
+    @AfterAll
     public static void teardown () throws Exception
     {
-        __testSupport.teardown();
+        if (__testSupport != null)
+            __testSupport.teardown();
     }
 
 
-    /** 
+    @Override
+    @DisabledOnJre( JRE.JAVA_12 )
+    public void testClusteredScavenge()
+        throws Exception
+    {
+        super.testClusteredScavenge();
+    }
+
+    /**
      * @see org.eclipse.jetty.server.session.AbstractTestBase#createSessionDataStoreFactory()
      */
     @Override

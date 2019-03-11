@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,28 +18,29 @@
 
 package org.eclipse.jetty.util;
 
+import java.time.Instant;
+import java.util.Date;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
-import org.eclipse.jetty.toolchain.test.AdvancedRunner;
-import org.eclipse.jetty.toolchain.test.annotation.Slow;
 import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+
+import org.junit.jupiter.api.Test;
 
 
 /**
  * Util meta Tests.
  */
-@RunWith(AdvancedRunner.class)
 public class DateCacheTest
 {
     /* ------------------------------------------------------------ */
     @Test
-    @Slow
+    @SuppressWarnings("ReferenceEquality")
     public void testDateCache() throws Exception
     {
         //@WAS: Test t = new Test("org.eclipse.jetty.util.DateCache");
@@ -48,7 +49,7 @@ public class DateCacheTest
 
         Thread.sleep(2000);
 
-        long now=System.currentTimeMillis();
+        long now=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         long end=now+3000;
         String f=dc.formatNow(now);
         String last=f;
@@ -67,8 +68,36 @@ public class DateCacheTest
                 misses++;
 
             TimeUnit.MILLISECONDS.sleep(100);
-            now=System.currentTimeMillis();
+            now=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         }
-        Assert.assertThat(hits,Matchers.greaterThan(misses));
+        assertThat(hits,Matchers.greaterThan(misses));
+    }
+
+    @Test
+    public void test_all_methods() {
+        // we simply check we do not have any exception
+        DateCache dateCache = new DateCache();
+        assertNotNull(dateCache.formatNow(System.currentTimeMillis()));
+        assertNotNull(dateCache.formatNow(new Date().getTime()));
+        assertNotNull(dateCache.formatNow(Instant.now().toEpochMilli()));
+
+        assertNotNull(dateCache.format(new Date()));
+        assertNotNull(dateCache.format(new Date(System.currentTimeMillis())));
+
+        assertNotNull(dateCache.format(System.currentTimeMillis()));
+        assertNotNull(dateCache.format(new Date().getTime()));
+        assertNotNull(dateCache.format(Instant.now().toEpochMilli()));
+
+        assertNotNull(dateCache.formatTick(System.currentTimeMillis()));
+        assertNotNull(dateCache.formatTick(new Date().getTime()));
+        assertNotNull(dateCache.formatTick(Instant.now().toEpochMilli()));
+
+        assertNotNull(dateCache.getFormatString());
+
+        assertNotNull(dateCache.getTimeZone());
+
+        assertNotNull(dateCache.now());
+
+        assertNotNull(dateCache.tick());
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -25,6 +25,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * @deprecated Use Java 8 method {@code ConcurrentHashMap.newKeySet()} instead.
+ */
+@Deprecated
 public class ConcurrentHashSet<E> extends AbstractSet<E> implements Set<E>
 {
     private final Map<E, Boolean> _map = new ConcurrentHashMap<E, Boolean>();

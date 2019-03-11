@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -70,7 +70,7 @@ public class BasicAuthentication extends AbstractAuthentication
      * Basic authentication result.
      * <p>
      * Application may utilize this class directly via
-     * {@link AuthenticationStore#addAuthenticationResult(Result)}
+     * {@link org.eclipse.jetty.client.api.AuthenticationStore#addAuthenticationResult(Result)}
      * to perform preemptive authentication, that is immediately
      * sending the authorization header based on the fact that the
      * URI is known to require authentication and that username
@@ -103,7 +103,8 @@ public class BasicAuthentication extends AbstractAuthentication
         @Override
         public void apply(Request request)
         {
-            request.header(header, value);
+            if (!request.getHeaders().contains(header, value))
+                request.header(header, value);
         }
 
         @Override

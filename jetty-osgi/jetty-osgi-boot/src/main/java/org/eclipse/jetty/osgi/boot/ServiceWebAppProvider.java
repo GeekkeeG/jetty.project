@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,7 +29,6 @@ import org.eclipse.jetty.deploy.DeploymentManager;
 import org.eclipse.jetty.osgi.boot.internal.serverfactory.ServerInstanceWrapper;
 import org.eclipse.jetty.osgi.boot.utils.Util;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.webapp.WebAppContext;
@@ -53,7 +52,7 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
     /**
      * Map of ServiceRef to App. Used when it is an osgi service that is a WebAppContext.
      */
-    private Map<ServiceReference, App> _serviceMap = new HashMap<ServiceReference, App>();
+    private Map<ServiceReference, App> _serviceMap = new HashMap<>();
     
     private ServiceRegistration _serviceRegForServices;
     
@@ -117,7 +116,7 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
     public class ServiceApp extends OSGiApp
     {
 
-        public ServiceApp(DeploymentManager manager, AppProvider provider, Bundle bundle, Dictionary properties, String originId)
+        public ServiceApp(DeploymentManager manager, AppProvider provider, Bundle bundle, Dictionary<String,String> properties, String originId)
         {
             super(manager, provider, bundle, properties, originId);
         }
@@ -156,6 +155,7 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
      * 
      * @param context the webapp
      */
+    @Override
     public boolean serviceAdded (ServiceReference serviceRef, ContextHandler context)
     {   
         if (context == null || !(context instanceof WebAppContext))
@@ -167,7 +167,7 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
         
         
         WebAppContext webApp = (WebAppContext)context;
-        Dictionary properties = new Hashtable<String,String>();
+        Dictionary<String,String> properties = new Hashtable<>();
         
         String contextPath = (String)serviceRef.getProperty(OSGiWebappConstants.RFC66_WEB_CONTEXTPATH);
         if (contextPath == null)
@@ -239,6 +239,7 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
     /**
      * @param context the webapp
      */
+    @Override
     public boolean serviceRemoved (ServiceReference serviceRef, ContextHandler context)
     {
         if (context == null || !(context instanceof WebAppContext))
@@ -262,17 +263,18 @@ public class ServiceWebAppProvider extends AbstractWebAppProvider implements Ser
     /** 
      * @see org.eclipse.jetty.util.component.AbstractLifeCycle#doStart()
      */
+    @Override
     protected void doStart() throws Exception
     {
         BundleContext bundleContext = FrameworkUtil.getBundle(this.getClass()).getBundleContext();
 
-        //Start a tracker to find webapps that are osgi services that are targetted to my server name
+        //Start a tracker to find webapps that are osgi services that are targeted to my server name
         webappTracker = new WebAppTracker (bundleContext, 
                                             Util.createFilter(bundleContext, WebAppContext.class.getName(), getServerInstanceWrapper().getManagedServerName()));
         webappTracker.open();
         
         //register as an osgi service for deploying bundles, advertising the name of the jetty Server instance we are related to
-        Dictionary<String,String> properties = new Hashtable<String,String>();
+        Dictionary<String,String> properties = new Hashtable<>();
         properties.put(OSGiServerConstants.MANAGED_JETTY_SERVER_NAME, getServerInstanceWrapper().getManagedServerName());
        
         //register as an osgi service for deploying contexts (discovered as osgi services), advertising the name of the jetty Server instance we are related to

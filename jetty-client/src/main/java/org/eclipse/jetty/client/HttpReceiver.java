@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,13 +21,13 @@ package org.eclipse.jetty.client;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import org.eclipse.jetty.client.api.Response;
 import org.eclipse.jetty.client.api.Result;
@@ -36,7 +36,7 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
-import org.eclipse.jetty.util.CountingCallback;
+import org.eclipse.jetty.util.IteratingNestedCallback;
 import org.eclipse.jetty.util.component.Destroyable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -72,6 +72,7 @@ public abstract class HttpReceiver
 
     private final AtomicReference<ResponseState> responseState = new AtomicReference<>(ResponseState.IDLE);
     private final HttpChannel channel;
+    private List<Response.AsyncContentListener> contentListeners;
     private ContentDecoder decoder;
     private Throwable failure;
 
@@ -93,6 +94,11 @@ public abstract class HttpReceiver
     protected HttpDestination getHttpDestination()
     {
         return channel.getHttpDestination();
+    }
+
+    public boolean isFailed()
+    {
+        return responseState.get() == ResponseState.FAILURE;
     }
 
     /**
@@ -257,7 +263,12 @@ public abstract class HttpReceiver
         if (LOG.isDebugEnabled())
             LOG.debug("Response headers {}{}{}", response, System.lineSeparator(), response.getHeaders().toString().trim());
         ResponseNotifier notifier = getHttpDestination().getResponseNotifier();
-        notifier.notifyHeaders(exchange.getConversation().getResponseListeners(), response);
+        List<Response.ResponseListener> responseListeners = exchange.getConversation().getResponseListeners();
+        notifier.notifyHeaders(responseListeners, response);
+        contentListeners = responseListeners.stream()
+                .filter(Response.AsyncContentListener.class::isInstance)
+                .map(Response.AsyncContentListener.class::cast)
+                .collect(Collectors.toList());
 
         Enumeration<String> contentEncodings = response.getHeaders().getValues(HttpHeader.CONTENT_ENCODING.asString(), ",");
         if (contentEncodings != null)
@@ -292,7 +303,7 @@ public abstract class HttpReceiver
      * @param callback the callback
      * @return whether the processing should continue
      */
-    protected boolean responseContent(HttpExchange exchange, ByteBuffer buffer, final Callback callback)
+    protected boolean responseContent(HttpExchange exchange, ByteBuffer buffer, Callback callback)
     {
         out: while (true)
         {
@@ -319,44 +330,15 @@ public abstract class HttpReceiver
             LOG.debug("Response content {}{}{}", response, System.lineSeparator(), BufferUtil.toDetailString(buffer));
 
         ResponseNotifier notifier = getHttpDestination().getResponseNotifier();
-        List<Response.ResponseListener> listeners = exchange.getConversation().getResponseListeners();
 
         ContentDecoder decoder = this.decoder;
         if (decoder == null)
         {
-            notifier.notifyContent(listeners, response, buffer, callback);
+            notifier.notifyContent(response, buffer, callback, contentListeners);
         }
         else
         {
-            try
-            {
-                List<ByteBuffer> decodeds = new ArrayList<>(2);
-                while (buffer.hasRemaining())
-                {
-                    ByteBuffer decoded = decoder.decode(buffer);
-                    if (!decoded.hasRemaining())
-                        continue;
-                    decodeds.add(decoded);
-                    if (LOG.isDebugEnabled())
-                        LOG.debug("Response content decoded ({}) {}{}{}", decoder, response, System.lineSeparator(), BufferUtil.toDetailString(decoded));
-                }
-
-                if (decodeds.isEmpty())
-                {
-                    callback.succeeded();
-                }
-                else
-                {
-                    int size = decodeds.size();
-                    CountingCallback counter = new CountingCallback(callback, size);
-                    for (int i = 0; i < size; ++i)
-                        notifier.notifyContent(listeners, response, decodeds.get(i), counter);
-                }
-            }
-            catch (Throwable x)
-            {
-                callback.failed(x);
-            }
+            new Decoder(notifier, response, decoder, buffer, callback).iterate();
         }
 
         if (updateResponseState(ResponseState.TRANSIENT, ResponseState.CONTENT))
@@ -471,6 +453,7 @@ public abstract class HttpReceiver
      */
     protected void reset()
     {
+        contentListeners = null;
         destroyDecoder(decoder);
         decoder = null;
     }
@@ -538,14 +521,14 @@ public abstract class HttpReceiver
             // respect to concurrency between request and response.
             Result result = exchange.terminateResponse();
             terminateResponse(exchange, result);
+            return true;
         }
         else
         {
             if (LOG.isDebugEnabled())
                 LOG.debug("Concurrent failure: response termination skipped, performed by helpers");
+            return false;
         }
-
-        return true;
     }
 
     private boolean updateResponseState(ResponseState from, ResponseState to)
@@ -602,5 +585,48 @@ public abstract class HttpReceiver
          * The response is failed
          */
         FAILURE
+    }
+
+    private class Decoder extends IteratingNestedCallback
+    {
+        private final ResponseNotifier notifier;
+        private final HttpResponse response;
+        private final ContentDecoder decoder;
+        private final ByteBuffer buffer;
+        private ByteBuffer decoded;
+
+        public Decoder(ResponseNotifier notifier, HttpResponse response, ContentDecoder decoder, ByteBuffer buffer, Callback callback)
+        {
+            super(callback);
+            this.notifier = notifier;
+            this.response = response;
+            this.decoder = decoder;
+            this.buffer = buffer;
+        }
+
+        @Override
+        protected Action process() throws Throwable
+        {
+            while (true)
+            {
+                decoded = decoder.decode(buffer);
+                if (decoded.hasRemaining())
+                    break;
+                if (!buffer.hasRemaining())
+                    return Action.SUCCEEDED;
+            }
+            if (LOG.isDebugEnabled())
+                LOG.debug("Response content decoded ({}) {}{}{}", decoder, response, System.lineSeparator(), BufferUtil.toDetailString(decoded));
+
+            notifier.notifyContent(response, decoded, this, contentListeners);
+            return Action.SCHEDULED;
+        }
+
+        @Override
+        public void succeeded()
+        {
+            decoder.release(decoded);
+            super.succeeded();
+        }
     }
 }

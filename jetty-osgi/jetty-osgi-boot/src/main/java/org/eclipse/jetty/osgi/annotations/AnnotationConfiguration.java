@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,9 +28,11 @@ import javax.servlet.ServletContainerInitializer;
 import org.eclipse.jetty.annotations.AnnotationParser.Handler;
 import org.eclipse.jetty.osgi.boot.OSGiWebInfConfiguration;
 import org.eclipse.jetty.osgi.boot.OSGiWebappConstants;
+import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.util.statistic.CounterStatistic;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.Constants;
@@ -52,6 +54,7 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
             super(parser, handlers, resource);
         }
 
+        @Override
         public Void call() throws Exception
         {
             if (_parser != null)
@@ -77,9 +80,9 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
      * This parser scans the bundles using the OSGi APIs instead of assuming a jar.
      */
     @Override
-    protected org.eclipse.jetty.annotations.AnnotationParser createAnnotationParser()
+    protected org.eclipse.jetty.annotations.AnnotationParser createAnnotationParser(int javaTargetVersion)
     {
-        return new AnnotationParser();
+        return new AnnotationParser(javaTargetVersion);
     }
     
     @Override
@@ -108,8 +111,12 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
     throws Exception
     {
         AnnotationParser oparser = (AnnotationParser)parser;
+
+        if (_webInfLibStats == null)
+            _webInfLibStats = new CounterStatistic();
         
         Bundle webbundle = (Bundle) context.getAttribute(OSGiWebappConstants.JETTY_OSGI_BUNDLE);
+        @SuppressWarnings("unchecked")
         Set<Bundle> fragAndRequiredBundles = (Set<Bundle>)context.getAttribute(OSGiWebInfConfiguration.FRAGMENT_AND_REQUIRED_BUNDLES);
         if (fragAndRequiredBundles != null)
         {
@@ -130,12 +137,14 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
                 {
                     //a fragment indeed:
                     parseFragmentBundle(context,oparser,webbundle,bundle);
+                    _webInfLibStats.increment();
                 }
             }
         }
         //scan ourselves
         oparser.indexBundle(webbundle);
         parseWebBundle(context,oparser,webbundle);
+        _webInfLibStats.increment();
         
         //scan the WEB-INF/lib
         super.parseWebInfLib(context,parser);
@@ -152,6 +161,7 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
                 {
                     //a bundle indeed:
                     parseRequiredBundle(context,oparser,webbundle,requiredBundle);
+                    _webInfLibStats.increment();
                 }
             }
         }
@@ -184,6 +194,23 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
         parseBundle(context,parser,webbundle,webbundle);
     }
     
+    
+    
+    
+    /** 
+     * @see org.eclipse.jetty.annotations.AnnotationConfiguration#parseWebInfClasses(org.eclipse.jetty.webapp.WebAppContext, org.eclipse.jetty.annotations.AnnotationParser)
+     */
+    @Override
+    public void parseWebInfClasses(WebAppContext context, org.eclipse.jetty.annotations.AnnotationParser parser)
+    throws Exception
+    {
+        Bundle webbundle = (Bundle) context.getAttribute(OSGiWebappConstants.JETTY_OSGI_BUNDLE);
+        String bundleClasspath = (String)webbundle.getHeaders().get(Constants.BUNDLE_CLASSPATH);
+        //only scan WEB-INF/classes if we didn't already scan it with parseWebBundle
+        if (StringUtil.isBlank(bundleClasspath) || !bundleClasspath.contains("WEB-INF/classes"))
+            super.parseWebInfClasses(context, parser);
+    }
+
     /**
      * Scan a bundle required by the webbundle for servlet annotations
      * @param context The webapp context
@@ -203,7 +230,7 @@ public class AnnotationConfiguration extends org.eclipse.jetty.annotations.Annot
                                {
 
         Resource bundleRes = parser.getResource(bundle);  
-        Set<Handler> handlers = new HashSet<Handler>();
+        Set<Handler> handlers = new HashSet<>();
         handlers.addAll(_discoverableAnnotationHandlers);
         if (_classInheritanceHandler != null)
             handlers.add(_classInheritanceHandler);

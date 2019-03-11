@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -72,10 +72,10 @@ public class DigestAuthenticator extends LoginAuthenticator
 
         String mna = configuration.getInitParameter("maxNonceAge");
         if (mna != null)
-            setMaxNonceAge(Long.valueOf(mna));
+            setMaxNonceAge(Long.parseLong(mna));
         String mnc = configuration.getInitParameter("maxNonceCount");
         if (mnc != null)
-            setMaxNonceCount(Integer.valueOf(mnc));
+            setMaxNonceCount(Integer.parseInt(mnc));
     }
 
     public int getMaxNonceCount()
@@ -383,7 +383,7 @@ public class DigestAuthenticator extends LoginAuthenticator
                 byte[] digest = md.digest();
 
                 // check digest
-                return (TypeUtil.toString(digest, 16).equalsIgnoreCase(response));
+                return stringEquals(TypeUtil.toString(digest, 16).toLowerCase(), response == null ? null : response.toLowerCase());
             }
             catch (Exception e)
             {

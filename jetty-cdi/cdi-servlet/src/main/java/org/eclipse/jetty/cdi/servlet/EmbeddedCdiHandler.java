@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,6 +23,11 @@ import java.util.Collections;
 import java.util.Set;
 
 import javax.servlet.ServletContext;
+import javax.servlet.http.HttpSessionActivationListener;
+import javax.servlet.http.HttpSessionAttributeListener;
+import javax.servlet.http.HttpSessionBindingListener;
+import javax.servlet.http.HttpSessionIdListener;
+import javax.servlet.http.HttpSessionListener;
 
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.log.Log;
@@ -119,6 +124,15 @@ public class EmbeddedCdiHandler extends ServletContextHandler
             
             // add the rest of the Weld Listeners
             ctx.addListener(weldListener);
+            if ((weldListener instanceof HttpSessionActivationListener)
+                    || (weldListener instanceof HttpSessionAttributeListener)
+                    || (weldListener instanceof HttpSessionBindingListener)
+                    || (weldListener instanceof HttpSessionListener)
+                    || (weldListener instanceof HttpSessionIdListener))
+                {
+                 if (getSessionHandler() != null)
+                     getSessionHandler().addEventListener(weldListener);
+                }
         }
         finally
         {

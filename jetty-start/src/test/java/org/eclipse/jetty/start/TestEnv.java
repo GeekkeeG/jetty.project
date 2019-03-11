@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,7 +28,6 @@ import java.nio.file.Path;
 import org.eclipse.jetty.toolchain.test.FS;
 import org.eclipse.jetty.toolchain.test.IO;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
-import org.eclipse.jetty.toolchain.test.OS;
 
 public class TestEnv
 {
@@ -41,7 +40,7 @@ public class TestEnv
 
     public static void makeFile(Path dir, String relFilePath, String... contents) throws IOException
     {
-        Path outputFile = dir.resolve(OS.separators(relFilePath));
+        Path outputFile = dir.resolve(FS.separators(relFilePath));
         FS.ensureDirExists(outputFile.getParent());
         try (BufferedWriter writer = Files.newBufferedWriter(outputFile);
              PrintWriter out = new PrintWriter(writer))

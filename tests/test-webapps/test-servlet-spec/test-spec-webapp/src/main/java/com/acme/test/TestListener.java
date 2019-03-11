@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -84,33 +84,42 @@ public class TestListener implements HttpSessionListener,  HttpSessionAttributeL
     
 
 
+    @Override
     public void attributeAdded(HttpSessionBindingEvent se)
     {
         // System.err.println("attributedAdded "+se);
     }
 
+    @Override
     public void attributeRemoved(HttpSessionBindingEvent se)
     {
         // System.err.println("attributeRemoved "+se);
     }
 
+    @Override
     public void attributeReplaced(HttpSessionBindingEvent se)
     {
         // System.err.println("attributeReplaced "+se);
     }
 
+    @Override
     public void sessionWillPassivate(HttpSessionEvent se)
     {
         // System.err.println("sessionWillPassivate "+se);
     }
 
+    @Override
     public void sessionDidActivate(HttpSessionEvent se)
     {
         // System.err.println("sessionDidActivate "+se);
     }
 
+    @Override
     public void contextInitialized(ServletContextEvent sce)
     {
+        if (sce.getServletContext().getAttribute("com.acme.AnnotationTest.sclInjectTest") != null)
+            throw new IllegalStateException("TestListener already initialized");
+        
         sce.getServletContext().setAttribute("com.acme.AnnotationTest.sclInjectTest", Boolean.valueOf(maxAmount != null));
         
         //Can't add a ServletContextListener from a ServletContextListener even if it is declared in web.xml
@@ -156,56 +165,67 @@ public class TestListener implements HttpSessionListener,  HttpSessionAttributeL
         }
     }
 
+    @Override
     public void contextDestroyed(ServletContextEvent sce)
     {
         // System.err.println("contextDestroyed "+sce);
     }
 
+    @Override
     public void attributeAdded(ServletContextAttributeEvent scab)
     {
         // System.err.println("attributeAdded "+scab);
     }
 
+    @Override
     public void attributeRemoved(ServletContextAttributeEvent scab)
     {
         // System.err.println("attributeRemoved "+scab);
     }
 
+    @Override
     public void attributeReplaced(ServletContextAttributeEvent scab)
     {
         // System.err.println("attributeReplaced "+scab);
     }
 
+    @Override
     public void requestDestroyed(ServletRequestEvent sre)
     {
         // System.err.println("requestDestroyed "+sre);
     }
 
+    @Override
     public void requestInitialized(ServletRequestEvent sre)
     {
         // System.err.println("requestInitialized "+sre);
     }
 
+    @Override
     public void attributeAdded(ServletRequestAttributeEvent srae)
     {
         // System.err.println("attributeAdded "+srae);
     }
 
+    @Override
     public void attributeRemoved(ServletRequestAttributeEvent srae)
     {
         // System.err.println("attributeRemoved "+srae);
     }
 
+    @Override
     public void attributeReplaced(ServletRequestAttributeEvent srae)
     {
         // System.err.println("attributeReplaced "+srae);
     }
 
+    @Override
     public void sessionCreated(HttpSessionEvent se)
     {
         // System.err.println("sessionCreated "+se);
     }
 
+    @Override
     public void sessionDestroyed(HttpSessionEvent se)
     {
         // System.err.println("sessionDestroyed "+se);

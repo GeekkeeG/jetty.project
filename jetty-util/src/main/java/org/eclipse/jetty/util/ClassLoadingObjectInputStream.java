@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -34,6 +34,20 @@ import java.lang.reflect.Proxy;
  */
 public class ClassLoadingObjectInputStream extends ObjectInputStream
 {
+    
+    protected static class ClassLoaderThreadLocal extends ThreadLocal<ClassLoader>
+    {
+        protected static final ClassLoader UNSET = new ClassLoader() {}; 
+        @Override
+        protected ClassLoader initialValue()
+        {
+            return UNSET;
+        }
+        
+    }
+    
+    private ThreadLocal<ClassLoader> _classloader = new ClassLoaderThreadLocal();
+    
     /* ------------------------------------------------------------ */
     public ClassLoadingObjectInputStream(java.io.InputStream in) throws IOException
     {
@@ -46,13 +60,33 @@ public class ClassLoadingObjectInputStream extends ObjectInputStream
         super();
     }
 
+    
+    public Object readObject (ClassLoader loader)
+    throws IOException, ClassNotFoundException
+    {
+        try
+        {
+            _classloader.set(loader);
+            return readObject();
+        }
+        finally
+        {
+            _classloader.set(ClassLoaderThreadLocal.UNSET);
+        }
+    }
+    
+    
     /* ------------------------------------------------------------ */
     @Override
     public Class<?> resolveClass (java.io.ObjectStreamClass cl) throws IOException, ClassNotFoundException
     {
         try
         {
-            return Class.forName(cl.getName(), false, Thread.currentThread().getContextClassLoader());
+            ClassLoader loader = _classloader.get();
+            if (ClassLoaderThreadLocal.UNSET == loader)
+                loader = Thread.currentThread().getContextClassLoader();
+            
+            return Class.forName(cl.getName(), false, loader);
         }
         catch (ClassNotFoundException e)
         {

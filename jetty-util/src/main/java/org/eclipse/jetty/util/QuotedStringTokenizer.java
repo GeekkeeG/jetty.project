@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -303,7 +303,7 @@ public class QuotedStringTokenizer
     /* ------------------------------------------------------------ */
     /** Quote a string.
      * The string is quoted only if quoting is required due to
-     * embeded delimiters, quote characters or the
+     * embedded delimiters, quote characters or the
      * empty string.
      * @param s The string to quote.
      * @return quoted string

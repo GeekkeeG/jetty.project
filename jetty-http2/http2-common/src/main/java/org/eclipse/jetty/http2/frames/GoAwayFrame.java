@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,17 +20,25 @@ package org.eclipse.jetty.http2.frames;
 
 import java.nio.charset.StandardCharsets;
 
+import org.eclipse.jetty.http2.CloseState;
 import org.eclipse.jetty.http2.ErrorCode;
 
 public class GoAwayFrame extends Frame
 {
+    private final CloseState closeState;
     private final int lastStreamId;
     private final int error;
     private final byte[] payload;
 
     public GoAwayFrame(int lastStreamId, int error, byte[] payload)
     {
+        this(CloseState.REMOTELY_CLOSED, lastStreamId, error, payload);
+    }
+
+    public GoAwayFrame(CloseState closeState, int lastStreamId, int error, byte[] payload)
+    {
         super(FrameType.GO_AWAY);
+        this.closeState = closeState;
         this.lastStreamId = lastStreamId;
         this.error = error;
         this.payload = payload;
@@ -68,11 +76,11 @@ public class GoAwayFrame extends Frame
     @Override
     public String toString()
     {
-        ErrorCode errorCode = ErrorCode.from(error);
-        return String.format("%s,%d/%s/%s",
+        return String.format("%s,%d/%s/%s/%s",
                 super.toString(),
                 lastStreamId,
-                errorCode != null ? errorCode.toString() : String.valueOf(error),
-                tryConvertPayload());
+                ErrorCode.toString(error, null),
+                tryConvertPayload(),
+                closeState);
     }
 }

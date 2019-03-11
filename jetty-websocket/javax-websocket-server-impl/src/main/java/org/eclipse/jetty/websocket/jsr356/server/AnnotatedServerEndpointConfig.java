@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -53,12 +53,13 @@ public class AnnotatedServerEndpointConfig implements ServerEndpointConfig
 
     public AnnotatedServerEndpointConfig(WebSocketContainerScope containerScope, Class<?> endpointClass, ServerEndpoint anno, ServerEndpointConfig baseConfig) throws DeploymentException
     {
-        ServerEndpointConfig.Configurator configr = null;
+        // A manually declared Configurator (not the one from the annotation)
+        ServerEndpointConfig.Configurator manualConfigurator = null;
 
         // Copy from base config
         if (baseConfig != null)
         {
-            configr = baseConfig.getConfigurator();
+            manualConfigurator = baseConfig.getConfigurator();
         }
 
         // Decoders (favor provided config over annotation)
@@ -112,26 +113,26 @@ public class AnnotatedServerEndpointConfig implements ServerEndpointConfig
             userProperties.putAll(baseConfig.getUserProperties());
         }
         
-        ServerEndpointConfig.Configurator cfgr;
+        ServerEndpointConfig.Configurator resolvedConfigurator;
 
-        if (anno.configurator() == ServerEndpointConfig.Configurator.class)
+        // Use ServerEndpointConfig provided configurator if declared
+        if ( (manualConfigurator != null) && !(manualConfigurator instanceof ContainerDefaultConfigurator) )
         {
-            if (configr != null)
-            {
-                cfgr = configr;
-            }
-            else
-            {
-                cfgr = new ContainerDefaultConfigurator();
-            }
+            resolvedConfigurator = manualConfigurator;
         }
+        // Use Container Default if annotation based configurator is undeclared
+        else if (anno.configurator() == ServerEndpointConfig.Configurator.class)
+        {
+            resolvedConfigurator = new ContainerDefaultConfigurator();
+        }
+        // Use annotation declared configurator
         else
         {
             try
             {
-                cfgr = anno.configurator().newInstance();
+                resolvedConfigurator = anno.configurator().getDeclaredConstructor( ).newInstance();
             }
-            catch (InstantiationException | IllegalAccessException e)
+            catch (Exception e)
             {
                 StringBuilder err = new StringBuilder();
                 err.append("Unable to instantiate ClientEndpoint.configurator() of ");
@@ -143,7 +144,7 @@ public class AnnotatedServerEndpointConfig implements ServerEndpointConfig
         }
         
         // Make sure all Configurators obtained are decorated
-        this.configurator = containerScope.getObjectFactory().decorate(cfgr);
+        this.configurator = containerScope.getObjectFactory().decorate(resolvedConfigurator);
     }
 
     @Override

@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
     <groupId>org.eclipse.jetty.gcloud</groupId>
     <artifactId>gcloud-parent</artifactId>
-    <version>9.4.4-SNAPSHOT</version>
+    <version>9.4.16-SNAPSHOT</version>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>
@@ -22,15 +24,34 @@
       <version>${gcloud.version}</version>
       <exclusions>
         <exclusion>
-	  <groupId>javax.servlet</groupId>
-	  <artifactId>servlet-api</artifactId>
+          <groupId>javax.servlet</groupId>
+          <artifactId>servlet-api</artifactId>
         </exclusion>
         <exclusion>
-	  <groupId>javax.servlet</groupId>
-	  <artifactId>javax.servlet-api</artifactId>
+          <groupId>javax.servlet</groupId>
+          <artifactId>javax.servlet-api</artifactId>
         </exclusion>
       </exclusions>
-
+    </dependency>
+    <dependency>
+      <groupId>com.google.auto.value</groupId>
+      <artifactId>auto-value</artifactId>
+      <version>1.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.http-client</groupId>
+      <artifactId>google-http-client-jackson2</artifactId>
+      <version>1.21.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>3.0.0</version>
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty</groupId>
@@ -57,49 +78,51 @@
     </dependency>
   </dependencies>
 
- <properties>
-   <bundle-symbolic-name>${project.groupId}.session</bundle-symbolic-name>
- </properties>
+  <properties>
+    <bundle-symbolic-name>${project.groupId}.session</bundle-symbolic-name>
+  </properties>
 
   <build>
     <plugins>
       <plugin>
-          <groupId>org.apache.felix</groupId>
-          <artifactId>maven-bundle-plugin</artifactId>
-          <extensions>true</extensions>
-          <executions>
-              <execution>
-                  <goals>
-                      <goal>manifest</goal>
-                  </goals>
-                  <configuration>
-                      <instructions>
-                          <Export-Package>org.eclipse.jetty.gcloud.session.*;version="${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.incrementalVersion}";</Export-Package>
-                      </instructions>
-                    </configuration>
-                 </execution>
-            </executions>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+            <goals>
+              <goal>manifest</goal>
+            </goals>
+            <configuration>
+              <instructions>
+                <Export-Package>
+                  org.eclipse.jetty.gcloud.session.*;version="${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.incrementalVersion}";
+                </Export-Package>
+              </instructions>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-dependency-plugin</artifactId>
-	  <version>3.0.0</version>
-	  <executions>
-	      <execution>
-	          <id>build-deps-file</id>
-		  <phase>generate-resources</phase>
-                  <goals>
-                      <goal>list</goal>
-                  </goals>
-                  <configuration>
-		    <appendOutput>false</appendOutput>
-		    <outputFile>${project.build.directory}/deps.txt</outputFile>
-		    <sort>true</sort>
-		    <prependGroupId>true</prependGroupId>
-		    <includeScope>runtime</includeScope>
-                  </configuration>
-	      </execution>
-	  </executions>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>build-deps-file</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>list</goal>
+            </goals>
+            <configuration>
+              <appendOutput>false</appendOutput>
+              <outputFile>${project.build.directory}/deps.txt</outputFile>
+              <sort>true</sort>
+              <excludeGroupIds>org.eclipse.jetty,javax.servlet</excludeGroupIds>
+              <prependGroupId>true</prependGroupId>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -114,18 +137,18 @@
             <configuration>
               <tasks>
                 <replaceregexp file="${project.build.directory}/deps.txt"
-                               match=" *(.*):(.*):jar:(.*):[a-z]*"
+                               match=" *(.*):(.*):jar:(.*):.*$"
                                replace="maven://\1/\2/\3|lib/gcloud/\2-\3.jar"
                                byline="true"
-		/>
+                />
                 <replaceregexp file="${project.build.directory}/deps.txt"
                                match="The following files have been resolved:"
                                replace="[files]"
                 />
               </tasks>
             </configuration>
-	  </execution>
-           <execution>
+          </execution>
+          <execution>
             <id>process-mod</id>
             <phase>process-resources</phase>
             <goals>
@@ -140,8 +163,7 @@
               </tasks>
             </configuration>
           </execution>
-
-         </executions>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -160,7 +182,7 @@
           </execution>
         </executions>
       </plugin>
-   </plugins>
+    </plugins>
   </build>
 
 </project>

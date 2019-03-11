@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -49,7 +49,7 @@ public class UnitParser extends Parser
     /**
      * Parse a buffer, but do so in a quiet fashion, squelching stacktraces if encountered.
      * <p>
-     * Use if you know the parse will cause an exception and just don't wnat to make the test console all noisy.
+     * Use if you know the parse will cause an exception and just don't want to make the test console all noisy.
      * @param buf the buffer to parse
      */
     public void parseQuietly(ByteBuffer buf)
@@ -57,10 +57,6 @@ public class UnitParser extends Parser
         try (StacklessLogging suppress = new StacklessLogging(Parser.class))
         {
             parse(buf);
-        }
-        catch (Exception ignore)
-        {
-            /* ignore */
         }
     }
 

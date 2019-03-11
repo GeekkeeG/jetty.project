@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -32,7 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.Loader;
-import org.eclipse.jetty.util.QuotedStringTokenizer;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -97,6 +96,15 @@ public class JSON
 
     public JSON()
     {
+    }
+
+    /**
+     * Reset the default JSON behaviors to default
+     */
+    public static void reset()
+    {
+        DEFAULT._convertors.clear();
+        DEFAULT._stringBufferSize = 1024;
     }
 
     /**
@@ -236,6 +244,98 @@ public class JSON
         return DEFAULT.parse(new StringSource(IO.toString(in)),stripOuterComment);
     }
 
+    private void quotedEscape(Appendable buffer, String input)
+    {
+        try
+        {
+            buffer.append('"');
+            if (input != null && input.length() > 0)
+            {
+                escapeString(buffer, input);
+            }
+            buffer.append('"');
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void escapeString(Appendable buffer, String input) throws IOException
+    {
+        // default escaping here.
+
+        for (int i = 0; i < input.length(); ++i)
+        {
+            char c = input.charAt(i);
+
+            // ASCII printable range
+            if ((c >= 0x20) && (c <= 0x7E))
+            {
+                // Special cases for quotation-mark, reverse-solidus, and solidus
+                if ((c == '"') || (c == '\\')
+                  /* solidus is optional - per Carsten Bormann (IETF)
+                     || (c == '/') */)
+                {
+                    buffer.append('\\').append(c);
+                }
+                else
+                {
+                    // ASCII printable (that isn't escaped above)
+                    buffer.append(c);
+                }
+            }
+            else
+            {
+                // All other characters are escaped (in some way)
+
+                // First we deal with the special short-form escaping
+                if (c == '\b') // backspace
+                    buffer.append("\\b");
+                else if (c == '\f') // form-feed
+                    buffer.append("\\f");
+                else if (c == '\n') // line feed
+                    buffer.append("\\n");
+                else if (c == '\r') // carriage return
+                    buffer.append("\\r");
+                else if (c == '\t') // tab
+                    buffer.append("\\t");
+                else if (c < 0x20 || c == 0x7F) // all control characters
+                {
+                    // default behavior is to encode
+                    buffer.append(String.format("\\u%04x", (short)c));
+                }
+                else
+                {
+                    // optional behavior in JSON spec
+                    escapeUnicode(buffer, c);
+                }
+            }
+        }
+    }
+
+    /**
+     * Per spec, unicode characters are by default NOT escaped.
+     * This overridable allows for alternate behavior to escape those with your choice
+     * of encoding.
+     *
+     * <code>
+     * protected void escapeUnicode(Appendable buffer, char c) throws IOException
+     * {
+     *     // Unicode is slash-u escaped
+     *     buffer.append(String.format("\\u%04x", (int)c));
+     * }
+     * </code>
+     *
+     * @param buffer
+     * @param c
+     * @throws IOException
+     */
+    protected void escapeUnicode(Appendable buffer, char c) throws IOException
+    {
+        buffer.append(c);
+    }
+
     /**
      * Convert Object to JSON
      *
@@ -370,10 +470,12 @@ public class JSON
     {
         appendJSON(buffer,new Convertible()
         {
+            @Override
             public void fromJSON(Map object)
             {
             }
 
+            @Override
             public void toJSON(Output out)
             {
                 convertor.toJSON(object,out);
@@ -426,7 +528,7 @@ public class JSON
             while (iter.hasNext())
             {
                 Map.Entry<?,?> entry = (Map.Entry<?,?>)iter.next();
-                QuotedStringTokenizer.quote(buffer,entry.getKey().toString());
+                quotedEscape(buffer, entry.getKey().toString());
                 buffer.append(':');
                 append(buffer,entry.getValue());
                 if (iter.hasNext())
@@ -571,7 +673,7 @@ public class JSON
             return;
         }
 
-        QuotedStringTokenizer.quote(buffer,string);
+        quotedEscape(buffer,string);
     }
 
     // Parsing utilities
@@ -607,7 +709,7 @@ public class JSON
         {
             try
             {
-                Convertible conv = (Convertible)type.newInstance();
+                Convertible conv = (Convertible)type.getDeclaredConstructor().newInstance();
                 conv.fromJSON(map);
                 return conv;
             }
@@ -1316,6 +1418,7 @@ public class JSON
             }
         }
 
+        @Override
         public void add(Object obj)
         {
             if (c == 0)
@@ -1324,6 +1427,7 @@ public class JSON
             c = 0;
         }
 
+        @Override
         public void addClass(Class type)
         {
             try
@@ -1341,6 +1445,7 @@ public class JSON
             }
         }
 
+        @Override
         public void add(String name, Object value)
         {
             try
@@ -1348,7 +1453,7 @@ public class JSON
                 if (c == 0)
                     throw new IllegalStateException();
                 _buffer.append(c);
-                QuotedStringTokenizer.quote(_buffer,name);
+                quotedEscape(_buffer,name);
                 _buffer.append(':');
                 append(_buffer,value);
                 c = ',';
@@ -1359,6 +1464,7 @@ public class JSON
             }
         }
 
+        @Override
         public void add(String name, double value)
         {
             try
@@ -1366,7 +1472,7 @@ public class JSON
                 if (c == 0)
                     throw new IllegalStateException();
                 _buffer.append(c);
-                QuotedStringTokenizer.quote(_buffer,name);
+                quotedEscape(_buffer,name);
                 _buffer.append(':');
                 appendNumber(_buffer, value);
                 c = ',';
@@ -1377,6 +1483,7 @@ public class JSON
             }
         }
 
+        @Override
         public void add(String name, long value)
         {
             try
@@ -1384,7 +1491,7 @@ public class JSON
                 if (c == 0)
                     throw new IllegalStateException();
                 _buffer.append(c);
-                QuotedStringTokenizer.quote(_buffer,name);
+                quotedEscape(_buffer,name);
                 _buffer.append(':');
                 appendNumber(_buffer, value);
                 c = ',';
@@ -1395,6 +1502,7 @@ public class JSON
             }
         }
 
+        @Override
         public void add(String name, boolean value)
         {
             try
@@ -1402,7 +1510,7 @@ public class JSON
                 if (c == 0)
                     throw new IllegalStateException();
                 _buffer.append(c);
-                QuotedStringTokenizer.quote(_buffer,name);
+                quotedEscape(_buffer,name);
                 _buffer.append(':');
                 appendBoolean(_buffer,value?Boolean.TRUE:Boolean.FALSE);
                 c = ',';
@@ -1436,6 +1544,7 @@ public class JSON
             string = s;
         }
 
+        @Override
         public boolean hasNext()
         {
             if (index < string.length())
@@ -1444,11 +1553,13 @@ public class JSON
             return false;
         }
 
+        @Override
         public char next()
         {
             return string.charAt(index++);
         }
 
+        @Override
         public char peek()
         {
             return string.charAt(index);
@@ -1460,6 +1571,7 @@ public class JSON
             return string.substring(0,index) + "|||" + string.substring(index);
         }
 
+        @Override
         public char[] scratchBuffer()
         {
             if (scratch == null)
@@ -1485,6 +1597,7 @@ public class JSON
             _next = -1;
         }
 
+        @Override
         public boolean hasNext()
         {
             getNext();
@@ -1496,6 +1609,7 @@ public class JSON
             return true;
         }
 
+        @Override
         public char next()
         {
             getNext();
@@ -1504,6 +1618,7 @@ public class JSON
             return c;
         }
 
+        @Override
         public char peek()
         {
             getNext();
@@ -1525,6 +1640,7 @@ public class JSON
             }
         }
 
+        @Override
         public char[] scratchBuffer()
         {
             if (scratch == null)
@@ -1552,7 +1668,6 @@ public class JSON
         public void add(String name, boolean value);
     }
 
-    /* ------------------------------------------------------------ */
     /**
      * JSON Convertible object. Object can implement this interface in a similar
      * way to the {@link Externalizable} interface is used to allow classes to
@@ -1629,6 +1744,7 @@ public class JSON
             return _json;
         }
 
+        @Override
         public void addJSON(Appendable buffer)
         {
             try

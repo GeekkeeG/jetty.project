@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,21 +20,21 @@ package org.eclipse.jetty.nosql.mongodb;
 
 import org.eclipse.jetty.server.session.AbstractClusteredSessionScavengingTest;
 import org.eclipse.jetty.server.session.SessionDataStoreFactory;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 
 public class ClusteredSessionScavengingTest extends AbstractClusteredSessionScavengingTest
 {
 
     
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws Exception
     {
         MongoTestHelper.dropCollection();
         MongoTestHelper.createCollection();
     }
 
-    @AfterClass
+    @AfterAll
     public static void afterClass() throws Exception
     {
         MongoTestHelper.dropCollection();
@@ -48,14 +48,5 @@ public class ClusteredSessionScavengingTest extends AbstractClusteredSessionScav
     {
         return MongoTestHelper.newSessionDataStoreFactory();
     }
-
-
-    @Override
-    public void testLocalSessionsScavenging() throws Exception
-    {
-        super.testLocalSessionsScavenging();
-    }
-    
-    
 
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,6 @@
 
 package org.eclipse.jetty.websocket.common.extensions;
 
-import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,20 +107,8 @@ public class ExtensionStack extends ContainerLifeCycle implements IncomingFrames
     }
 
     @Override
-    public void dump(Appendable out, String indent) throws IOException
-    {
-        super.dump(out,indent);
-
-        IncomingFrames websocket = getLastIncoming();
-        OutgoingFrames network = getLastOutgoing();
-
-        out.append(indent).append(" +- Stack").append(System.lineSeparator());
-        out.append(indent).append("     +- Network  : ").append(network.toString()).append(System.lineSeparator());
-        for (Extension ext : extensions)
-        {
-            out.append(indent).append("     +- Extension: ").append(ext.toString()).append(System.lineSeparator());
-        }
-        out.append(indent).append("     +- Websocket: ").append(websocket.toString()).append(System.lineSeparator());
+    public String dumpSelf() {
+        return String.format("%s@%x[size=%d,queueSize=%d]", getClass().getSimpleName(), hashCode(), extensions.size(), getQueueSize());
     }
 
     @ManagedAttribute(name = "Extension List", readonly = true)
@@ -206,12 +193,6 @@ public class ExtensionStack extends ContainerLifeCycle implements IncomingFrames
     public boolean hasNegotiatedExtensions()
     {
         return (this.extensions != null) && (this.extensions.size() > 0);
-    }
-
-    @Override
-    public void incomingError(Throwable e)
-    {
-        nextIncoming.incomingError(e);
     }
 
     @Override

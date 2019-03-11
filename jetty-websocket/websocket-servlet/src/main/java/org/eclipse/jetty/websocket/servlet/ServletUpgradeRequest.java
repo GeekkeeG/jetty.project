@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -48,22 +48,22 @@ public class ServletUpgradeRequest implements UpgradeRequest
 {
     private static final String CANNOT_MODIFY_SERVLET_REQUEST = "Cannot modify Servlet Request";
     private final URI requestURI;
+    private final String queryString;
     private final UpgradeHttpServletRequest request;
     private final boolean secure;
     private List<HttpCookie> cookies;
     private Map<String, List<String>> parameterMap;
-    private List<String> subprotocols;
 
     public ServletUpgradeRequest(HttpServletRequest httpRequest) throws URISyntaxException
     {
-        URI servletURI = URI.create(httpRequest.getRequestURL().toString());
+        this.queryString = httpRequest.getQueryString();
         this.secure = httpRequest.isSecure();
-        String scheme = secure ? "wss" : "ws";
-        String authority = servletURI.getAuthority();
-        String path = servletURI.getPath();
-        String query = httpRequest.getQueryString();
-        String fragment = null;
-        this.requestURI = new URI(scheme,authority,path,query,fragment);
+
+        StringBuffer uri = httpRequest.getRequestURL();
+        if (this.queryString!=null)
+            uri.append("?").append(this.queryString);
+        uri.replace(0,uri.indexOf(":"),secure ? "wss" : "ws");        
+        this.requestURI = new URI(uri.toString());
         this.request = new UpgradeHttpServletRequest(httpRequest);
     }
 
@@ -292,7 +292,7 @@ public class ServletUpgradeRequest implements UpgradeRequest
     @Override
     public String getQueryString()
     {
-        return requestURI.getQuery();
+        return this.queryString;
     }
 
     /**
@@ -383,25 +383,27 @@ public class ServletUpgradeRequest implements UpgradeRequest
     @Override
     public List<String> getSubProtocols()
     {
-        if (subprotocols == null)
+        Enumeration<String> requestProtocols = request.getHeaders("Sec-WebSocket-Protocol");
+        if (requestProtocols != null && requestProtocols.hasMoreElements())
         {
-            Enumeration<String> requestProtocols = request.getHeaders("Sec-WebSocket-Protocol");
-            if (requestProtocols != null)
+            ArrayList subprotocols = new ArrayList<>(2);
+            while (requestProtocols.hasMoreElements())
             {
-                subprotocols = new ArrayList<>(2);
-                while (requestProtocols.hasMoreElements())
-                {
-                    String candidate = requestProtocols.nextElement();
-                    Collections.addAll(subprotocols,parseProtocols(candidate));
-                }
+                String candidate = requestProtocols.nextElement();
+                Collections.addAll(subprotocols,parseProtocols(candidate));
             }
+            return subprotocols;
         }
-        return subprotocols;
+        else
+        {
+            return Collections.emptyList();
+        }
     }
 
     /**
      * Equivalent to {@link HttpServletRequest#getUserPrincipal()}
      */
+    @Override
     public Principal getUserPrincipal()
     {
         return request.getUserPrincipal();

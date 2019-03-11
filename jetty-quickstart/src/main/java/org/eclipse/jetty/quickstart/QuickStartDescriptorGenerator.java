@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -51,6 +51,7 @@ import org.eclipse.jetty.security.authentication.FormAuthenticator;
 import org.eclipse.jetty.servlet.ErrorPageErrorHandler;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.FilterMapping;
+import org.eclipse.jetty.servlet.ListenerHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler.JspConfig;
 import org.eclipse.jetty.servlet.ServletHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
@@ -72,6 +73,10 @@ import org.eclipse.jetty.xml.XmlAppendable;
  * <p>
  * Generate an effective web.xml from a WebAppContext, including all components 
  * from web.xml, web-fragment.xmls annotations etc.
+ * <p>
+ * If generating quickstart for a different java platform than the current running
+ * platform, then the org.eclipse.jetty.annotations.javaTargetPlatform attribute
+ * should be set on the Context with the platform number of the target JVM (eg 8).
  */
 public class QuickStartDescriptorGenerator
 {
@@ -92,8 +97,10 @@ public class QuickStartDescriptorGenerator
     /**
      * @param w the source WebAppContext
      * @param extraXML any extra xml snippet to append
+     * @param originAttribute param value to use for the context param origin attribute
+     * @param generateOrigin <code>true</code> to generate the origin attribute
      */
-    public QuickStartDescriptorGenerator (WebAppContext w,  String extraXML, String originAttribute, boolean generateOrigin)
+    public QuickStartDescriptorGenerator (WebAppContext w, String extraXML, String originAttribute, boolean generateOrigin)
     {
         _webApp = w;
         _extraXML = extraXML;
@@ -170,10 +177,10 @@ public class QuickStartDescriptorGenerator
             .tag("param-value",_webApp.getInitParameter(p))
             .closeTag();
 
-        if (_webApp.getEventListeners() != null)
-            for (EventListener e : _webApp.getEventListeners())
-                out.openTag("listener",origin(md,e.getClass().getCanonicalName() + ".listener"))
-                .tag("listener-class",e.getClass().getCanonicalName())
+        if (_webApp.getServletHandler().getListeners() != null)
+            for (ListenerHolder e : _webApp.getServletHandler().getListeners())
+                out.openTag("listener",origin(md,e.getClassName() + ".listener"))
+                .tag("listener-class",e.getClassName())
                 .closeTag();
 
         ServletHandler servlets = _webApp.getServletHandler();

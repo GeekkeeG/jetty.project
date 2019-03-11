@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,12 @@
 //
 
 package org.eclipse.jetty.http2.client;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -42,13 +48,12 @@ import org.eclipse.jetty.http2.frames.DataFrame;
 import org.eclipse.jetty.http2.frames.Frame;
 import org.eclipse.jetty.http2.frames.HeadersFrame;
 import org.eclipse.jetty.http2.frames.SettingsFrame;
+import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.FuturePromise;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
-import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class InterleavingTest extends AbstractTest
 {
@@ -80,16 +85,13 @@ public class InterleavingTest extends AbstractTest
             }
         });
 
-        BlockingQueue<FrameBytesCallback> dataFrames = new LinkedBlockingDeque<>();
+        BlockingQueue<DataFrameCallback> dataFrames = new LinkedBlockingDeque<>();
         Stream.Listener streamListener = new Stream.Listener.Adapter()
         {
             @Override
             public void onData(Stream stream, DataFrame frame, Callback callback)
             {
-                ByteBuffer data = frame.getData();
-                byte[] bytes = new byte[data.remaining()];
-                data.get(bytes);
-                dataFrames.offer(new FrameBytesCallback(frame, bytes, callback));
+                dataFrames.offer(new DataFrameCallback(frame, callback));
             }
         };
 
@@ -103,7 +105,7 @@ public class InterleavingTest extends AbstractTest
         session.newStream(headersFrame2, streamPromise2, streamListener);
         streamPromise2.get(5, TimeUnit.SECONDS);
 
-        Assert.assertTrue(serverStreamsLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(serverStreamsLatch.await(5, TimeUnit.SECONDS));
 
         Thread.sleep(1000);
 
@@ -146,25 +148,25 @@ public class InterleavingTest extends AbstractTest
         int finished = 0;
         while (finished < 2)
         {
-            FrameBytesCallback frameBytesCallback = dataFrames.poll(5, TimeUnit.SECONDS);
-            if (frameBytesCallback == null)
-                Assert.fail();
+            DataFrameCallback dataFrameCallback = dataFrames.poll(5, TimeUnit.SECONDS);
+            if (dataFrameCallback == null)
+                fail();
 
-            DataFrame dataFrame = frameBytesCallback.frame;
+            DataFrame dataFrame = dataFrameCallback.frame;
             int streamId = dataFrame.getStreamId();
             int length = dataFrame.remaining();
             streamLengths.add(new StreamLength(streamId, length));
             if (dataFrame.isEndStream())
                 ++finished;
 
-            contents.get(streamId).write(frameBytesCallback.bytes);
+            BufferUtil.writeTo(dataFrame.getData(), contents.get(streamId));
 
-            frameBytesCallback.callback.succeeded();
+            dataFrameCallback.callback.succeeded();
         }
 
         // Verify that the content has been sent properly.
-        Assert.assertArrayEquals(content1, contents.get(serverStream1.getId()).toByteArray());
-        Assert.assertArrayEquals(content2, contents.get(serverStream2.getId()).toByteArray());
+        assertArrayEquals(content1, contents.get(serverStream1.getId()).toByteArray());
+        assertArrayEquals(content2, contents.get(serverStream2.getId()).toByteArray());
 
         // Verify that the interleaving is correct.
         Map<Integer, List<Integer>> groups = new HashMap<>();
@@ -193,20 +195,18 @@ public class InterleavingTest extends AbstractTest
         {
             logger.debug("stream {} interleaved lengths = {}", stream, lengths);
             for (Integer length : lengths)
-                Assert.assertThat(length, Matchers.lessThanOrEqualTo(maxFrameSize));
+                assertThat(length, lessThanOrEqualTo(maxFrameSize));
         });
     }
 
-    private static class FrameBytesCallback
+    private static class DataFrameCallback
     {
         private final DataFrame frame;
-        private final byte[] bytes;
         private final Callback callback;
 
-        private FrameBytesCallback(DataFrame frame, byte[] bytes, Callback callback)
+        private DataFrameCallback(DataFrame frame, Callback callback)
         {
             this.frame = frame;
-            this.bytes = bytes;
             this.callback = callback;
         }
     }

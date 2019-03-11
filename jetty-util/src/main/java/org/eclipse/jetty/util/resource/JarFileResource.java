@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,11 +29,12 @@ import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+import org.eclipse.jetty.util.URIUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
 /* ------------------------------------------------------------ */
-class JarFileResource extends JarResource
+public class JarFileResource extends JarResource
 {
     private static final Logger LOG = Log.getLogger(JarFileResource.class);
     private JarFile _jarFile;
@@ -123,7 +124,7 @@ class JarFileResource extends JarResource
         
         int sep = _urlString.lastIndexOf("!/");
         _jarUrl=_urlString.substring(0,sep+2);
-        _path=_urlString.substring(sep+2);
+        _path=URIUtil.decodePath(_urlString.substring(sep+2));
         if (_path.length()==0)
             _path=null;   
         _jarFile=_jarConnection.getJarFile();

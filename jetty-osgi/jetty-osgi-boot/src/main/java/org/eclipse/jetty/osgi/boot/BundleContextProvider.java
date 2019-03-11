@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -154,6 +154,7 @@ public class BundleContextProvider extends AbstractContextProvider implements Bu
 
 
     /* ------------------------------------------------------------ */
+    @Override
     public boolean bundleAdded (Bundle bundle) throws Exception
     {
         if (bundle == null)
@@ -206,6 +207,7 @@ public class BundleContextProvider extends AbstractContextProvider implements Bu
      * @param bundle the bundle
      * @return true if this was a context we had deployed, false otherwise
      */
+    @Override
     public boolean bundleRemoved (Bundle bundle) throws Exception
     {
         List<App> apps = _bundleMap.remove(bundle);

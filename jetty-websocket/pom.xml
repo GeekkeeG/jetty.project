@@ -3,7 +3,7 @@
     <parent>
         <artifactId>jetty-project</artifactId>
         <groupId>org.eclipse.jetty</groupId>
-        <version>9.4.4-SNAPSHOT</version>
+        <version>9.4.16-SNAPSHOT</version>
     </parent>
 
     <modelVersion>4.0.0</modelVersion>
@@ -19,30 +19,29 @@
         <module>websocket-client</module>
         <module>websocket-server</module>
         <module>websocket-servlet</module>
+        <module>jetty-websocket-tests</module>
         <module>javax-websocket-client-impl</module>
         <module>javax-websocket-server-impl</module>
     </modules>
 
     <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>findbugs-maven-plugin</artifactId>
-                    <configuration>
-                        <onlyAnalyze>org.eclipse.jetty.websocket.*</onlyAnalyze>
-                    </configuration>
-                </plugin>
-                <plugin>
-                    <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>clirr-maven-plugin</artifactId>
-                    <configuration>
-                        <minSeverity>info</minSeverity>
-                        <comparisonVersion>9.1.0.v20131115</comparisonVersion>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>findbugs-maven-plugin</artifactId>
+                <configuration>
+                    <onlyAnalyze>org.eclipse.jetty.websocket.*</onlyAnalyze>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.build.outputDirectory}/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
-
 </project>

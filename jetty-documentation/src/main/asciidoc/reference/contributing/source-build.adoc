@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[contributing-source-build]]
 === Source Control and Building
@@ -47,7 +49,7 @@ Files associated with the development of Jetty -- code styles, formatting, iplog
 
 ==== Build
 
-Jetty requires the use of Java 7 and the latest releases are always recommended to build.
+Jetty requires the use of Java 8 and the latest releases are always recommended to build.
 
 Jetty uses http://maven.apache.org/[Apache Maven 3] for managing its build and primary project metadata.
 

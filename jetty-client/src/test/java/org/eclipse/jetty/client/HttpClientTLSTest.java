@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,25 +18,48 @@
 
 package org.eclipse.jetty.client;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSocket;
+
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.io.ClientConnectionFactory;
+import org.eclipse.jetty.io.ssl.SslClientConnectionFactory;
 import org.eclipse.jetty.io.ssl.SslHandshakeListener;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
+import org.eclipse.jetty.util.thread.ExecutorThreadPool;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnJre;
+import org.junit.jupiter.api.condition.JRE;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.instanceOf;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HttpClientTLSTest
 {
@@ -46,7 +69,7 @@ public class HttpClientTLSTest
 
     private void startServer(SslContextFactory sslContextFactory, Handler handler) throws Exception
     {
-        QueuedThreadPool serverThreads = new QueuedThreadPool();
+        ExecutorThreadPool serverThreads = new ExecutorThreadPool();
         serverThreads.setName("server");
         server = new Server(serverThreads);
 
@@ -75,7 +98,7 @@ public class HttpClientTLSTest
         return sslContextFactory;
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         if (client != null)
@@ -88,7 +111,7 @@ public class HttpClientTLSTest
     public void testNoCommonTLSProtocol() throws Exception
     {
         SslContextFactory serverTLSFactory = createSslContextFactory();
-        serverTLSFactory.setIncludeProtocols("TLSv1.2");
+        serverTLSFactory.setIncludeProtocols("TLSv1.3");
         startServer(serverTLSFactory, new EmptyServerHandler());
 
         CountDownLatch serverLatch = new CountDownLatch(1);
@@ -102,7 +125,7 @@ public class HttpClientTLSTest
         });
 
         SslContextFactory clientTLSFactory = createSslContextFactory();
-        clientTLSFactory.setIncludeProtocols("TLSv1.1");
+        clientTLSFactory.setIncludeProtocols("TLSv1.2");
         startClient(clientTLSFactory);
 
         CountDownLatch clientLatch = new CountDownLatch(1);
@@ -115,21 +138,14 @@ public class HttpClientTLSTest
             }
         });
 
-        try
-        {
-            client.newRequest("localhost", connector.getLocalPort())
-                    .scheme(HttpScheme.HTTPS.asString())
-                    .timeout(5, TimeUnit.SECONDS)
-                    .send();
-            Assert.fail();
-        }
-        catch (ExecutionException x)
-        {
-            // Expected.
-        }
+        assertThrows(ExecutionException.class, () ->
+                client.newRequest("localhost", connector.getLocalPort())
+                        .scheme(HttpScheme.HTTPS.asString())
+                        .timeout(5, TimeUnit.SECONDS)
+                        .send());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
     }
 
     @Test
@@ -163,21 +179,14 @@ public class HttpClientTLSTest
             }
         });
 
-        try
-        {
-            client.newRequest("localhost", connector.getLocalPort())
-                    .scheme(HttpScheme.HTTPS.asString())
-                    .timeout(5, TimeUnit.SECONDS)
-                    .send();
-            Assert.fail();
-        }
-        catch (ExecutionException x)
-        {
-            // Expected.
-        }
+        assertThrows(ExecutionException.class, () ->
+                client.newRequest("localhost", connector.getLocalPort())
+                        .scheme(HttpScheme.HTTPS.asString())
+                        .timeout(5, TimeUnit.SECONDS)
+                        .send());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
     }
 
     @Test
@@ -212,23 +221,19 @@ public class HttpClientTLSTest
             }
         });
 
-        try
-        {
-            client.newRequest("localhost", connector.getLocalPort())
-                    .scheme(HttpScheme.HTTPS.asString())
-                    .timeout(5, TimeUnit.SECONDS)
-                    .send();
-            Assert.fail();
-        }
-        catch (ExecutionException x)
-        {
-            // Expected.
-        }
+        assertThrows(ExecutionException.class, () ->
+                client.newRequest("localhost", connector.getLocalPort())
+                        .scheme(HttpScheme.HTTPS.asString())
+                        .timeout(5, TimeUnit.SECONDS)
+                        .send());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
     }
 
+    // In JDK 11+, a mismatch on the client does not generate any bytes towards
+    // the server, while in previous JDKs the client sends to the server the close_notify.
+    @EnabledOnJre({JRE.JAVA_8, JRE.JAVA_9, JRE.JAVA_10})
     @Test
     public void testMismatchBetweenTLSProtocolAndTLSCiphersOnClient() throws Exception
     {
@@ -261,21 +266,14 @@ public class HttpClientTLSTest
             }
         });
 
-        try
-        {
-            client.newRequest("localhost", connector.getLocalPort())
-                    .scheme(HttpScheme.HTTPS.asString())
-                    .timeout(5, TimeUnit.SECONDS)
-                    .send();
-            Assert.fail();
-        }
-        catch (ExecutionException x)
-        {
-            // Expected.
-        }
+        assertThrows(ExecutionException.class, () ->
+                client.newRequest("localhost", connector.getLocalPort())
+                        .scheme(HttpScheme.HTTPS.asString())
+                        .timeout(5, TimeUnit.SECONDS)
+                        .send());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
     }
 
     @Test
@@ -308,12 +306,15 @@ public class HttpClientTLSTest
         });
 
         ContentResponse response = client.GET("https://localhost:" + connector.getLocalPort());
-        Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+        assertEquals(HttpStatus.OK_200, response.getStatus());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
     }
 
+    // Excluded in JDK 11+ because resumed sessions cannot be compared
+    // using their session IDs even though they are resumed correctly.
+    @EnabledOnJre({JRE.JAVA_8, JRE.JAVA_9, JRE.JAVA_10})
     @Test
     public void testHandshakeSucceededWithSessionResumption() throws Exception
     {
@@ -349,10 +350,10 @@ public class HttpClientTLSTest
                 .header(HttpHeader.CONNECTION, "close")
                 .timeout(5, TimeUnit.SECONDS)
                 .send();
-        Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+        assertEquals(HttpStatus.OK_200, response.getStatus());
 
-        Assert.assertNotNull(serverSession.get());
-        Assert.assertNotNull(clientSession.get());
+        assertNotNull(serverSession.get());
+        assertNotNull(clientSession.get());
 
         connector.removeBean(connector.getBean(SslHandshakeListener.class));
         client.removeBean(client.getBean(SslHandshakeListener.class));
@@ -385,9 +386,163 @@ public class HttpClientTLSTest
                 .header(HttpHeader.CONNECTION, "close")
                 .timeout(5, TimeUnit.SECONDS)
                 .send();
-        Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+        assertEquals(HttpStatus.OK_200, response.getStatus());
 
-        Assert.assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
-        Assert.assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(serverLatch.await(1, TimeUnit.SECONDS));
+        assertTrue(clientLatch.await(1, TimeUnit.SECONDS));
+    }
+
+    // Excluded in JDK 11+ because resumed sessions cannot be compared
+    // using their session IDs even though they are resumed correctly.
+    @EnabledOnJre({JRE.JAVA_8, JRE.JAVA_9, JRE.JAVA_10})
+    @Test
+    public void testClientRawCloseDoesNotInvalidateSession() throws Exception
+    {
+        SslContextFactory serverTLSFactory = createSslContextFactory();
+        startServer(serverTLSFactory, new EmptyServerHandler());
+
+        SslContextFactory clientTLSFactory = createSslContextFactory();
+        clientTLSFactory.start();
+
+        String host = "localhost";
+        int port = connector.getLocalPort();
+        Socket socket = new Socket(host, port);
+        SSLSocket sslSocket = (SSLSocket)clientTLSFactory.getSslContext().getSocketFactory().createSocket(socket, host, port, true);
+        CountDownLatch handshakeLatch1 = new CountDownLatch(1);
+        AtomicReference<byte[]> session1 = new AtomicReference<>();
+        sslSocket.addHandshakeCompletedListener(event ->
+        {
+            session1.set(event.getSession().getId());
+            handshakeLatch1.countDown();
+        });
+        sslSocket.startHandshake();
+        assertTrue(handshakeLatch1.await(5, TimeUnit.SECONDS));
+
+        // In TLS 1.3 the server sends a NewSessionTicket post-handshake message
+        // to enable session resumption and without a read, the message is not processed.
+        try
+        {
+            sslSocket.setSoTimeout(1000);
+            sslSocket.getInputStream().read();
+        }
+        catch (SocketTimeoutException expected)
+        {
+        }
+
+        // The client closes abruptly.
+        socket.close();
+
+        // Try again and compare the session ids.
+        socket = new Socket(host, port);
+        sslSocket = (SSLSocket)clientTLSFactory.getSslContext().getSocketFactory().createSocket(socket, host, port, true);
+        CountDownLatch handshakeLatch2 = new CountDownLatch(1);
+        AtomicReference<byte[]> session2 = new AtomicReference<>();
+        sslSocket.addHandshakeCompletedListener(event ->
+        {
+            session2.set(event.getSession().getId());
+            handshakeLatch2.countDown();
+        });
+        sslSocket.startHandshake();
+        assertTrue(handshakeLatch2.await(5, TimeUnit.SECONDS));
+
+        assertArrayEquals(session1.get(), session2.get());
+
+        sslSocket.close();
+    }
+
+    @Test
+    public void testServerRawCloseDetectedByClient() throws Exception
+    {
+        SslContextFactory serverTLSFactory = createSslContextFactory();
+        serverTLSFactory.start();
+        try (ServerSocket server = new ServerSocket(0))
+        {
+            QueuedThreadPool clientThreads = new QueuedThreadPool();
+            clientThreads.setName("client");
+            client = new HttpClient(createSslContextFactory())
+            {
+                @Override
+                protected ClientConnectionFactory newSslClientConnectionFactory(ClientConnectionFactory connectionFactory)
+                {
+                    SslClientConnectionFactory ssl = (SslClientConnectionFactory)super.newSslClientConnectionFactory(connectionFactory);
+                    ssl.setAllowMissingCloseMessage(false);
+                    return ssl;
+                }
+            };
+            client.setExecutor(clientThreads);
+            client.start();
+
+            CountDownLatch latch = new CountDownLatch(1);
+            client.newRequest("localhost", server.getLocalPort())
+                    .scheme(HttpScheme.HTTPS.asString())
+                    .send(result ->
+                    {
+                        assertThat(result.getResponseFailure(), instanceOf(SSLException.class));
+                        latch.countDown();
+                    });
+
+            try (Socket socket = server.accept())
+            {
+                SSLSocket sslSocket = (SSLSocket)serverTLSFactory.getSslContext().getSocketFactory().createSocket(socket, null, socket.getPort(), true);
+                sslSocket.setUseClientMode(false);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream(), StandardCharsets.UTF_8));
+                while (true)
+                {
+                    String line = reader.readLine();
+                    if (line == null || line.isEmpty())
+                        break;
+                }
+
+                // If the response is Content-Length delimited, allowing the
+                // missing TLS Close Message is fine because the application
+                // will see a EOFException anyway.
+                // If the response is connection delimited, allowing the
+                // missing TLS Close Message is bad because the application
+                // will see a successful response with truncated content.
+
+                // Verify that by not allowing the missing
+                // TLS Close Message we get a response failure.
+
+                byte[] half = new byte[8];
+                String response = "HTTP/1.1 200 OK\r\n" +
+//                        "Content-Length: " + (half.length * 2) + "\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n";
+                OutputStream output = sslSocket.getOutputStream();
+                output.write(response.getBytes(StandardCharsets.UTF_8));
+                output.write(half);
+                output.flush();
+                // Simulate a truncation attack by raw closing
+                // the socket in the try-with-resources block end.
+            }
+
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void testHostNameVerificationFailure() throws Exception
+    {
+        SslContextFactory serverTLSFactory = createSslContextFactory();
+        startServer(serverTLSFactory, new EmptyServerHandler());
+
+        SslContextFactory clientTLSFactory = createSslContextFactory();
+        // Make sure the host name is not verified at the TLS level.
+        clientTLSFactory.setEndpointIdentificationAlgorithm(null);
+        // Add host name verification after the TLS handshake.
+        clientTLSFactory.setHostnameVerifier((host, session) -> false);
+        startClient(clientTLSFactory);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        client.newRequest("localhost", connector.getLocalPort())
+                .scheme(HttpScheme.HTTPS.asString())
+                .send(result ->
+                {
+                    Throwable failure = result.getFailure();
+                    if (failure instanceof SSLPeerUnverifiedException)
+                        latch.countDown();
+                });
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,13 +19,17 @@
 package org.eclipse.jetty.io;
 
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.eclipse.jetty.util.thread.TimerScheduler;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class IdleTimeoutTest
 {
@@ -35,7 +39,7 @@ public class IdleTimeoutTest
     TimerScheduler _timer;
     IdleTimeout _timeout;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception
     {
         _open=true;
@@ -59,7 +63,7 @@ public class IdleTimeoutTest
         _timeout.setIdleTimeout(1000);
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception
     {
         _open=false;
@@ -76,7 +80,7 @@ public class IdleTimeoutTest
             _timeout.notIdle();
         }
 
-        Assert.assertNull(_expired);
+        assertNull(_expired);
     }
 
     @Test
@@ -88,7 +92,7 @@ public class IdleTimeoutTest
             _timeout.notIdle();
         }
         Thread.sleep(1500);
-        Assert.assertNotNull(_expired);
+        assertNotNull(_expired);
     }
 
     @Test
@@ -101,7 +105,7 @@ public class IdleTimeoutTest
         }
         _timeout.onClose();
         Thread.sleep(1500);
-        Assert.assertNull(_expired);
+        assertNull(_expired);
     }
 
     @Test
@@ -114,20 +118,27 @@ public class IdleTimeoutTest
         }
         _open=false;
         Thread.sleep(1500);
-        Assert.assertNull(_expired);
+        assertNull(_expired);
     }
 
     @Test
     public void testShorten() throws Exception
-    {
-        for (int i=0;i<5;i++)
+    {        
+        _timeout.setIdleTimeout(2000);
+
+        for (int i=0;i<30;i++)
         {
             Thread.sleep(100);
             _timeout.notIdle();
         }
+        assertNull(_expired);
         _timeout.setIdleTimeout(100);
-        Thread.sleep(400);
-        Assert.assertNotNull(_expired);
+        
+        long start = System.nanoTime();
+        while (_expired==null && TimeUnit.NANOSECONDS.toSeconds(System.nanoTime()-start)<5)
+            Thread.sleep(200);
+        
+        assertNotNull(_expired);
     }
 
     @Test
@@ -140,17 +151,17 @@ public class IdleTimeoutTest
         }
         _timeout.setIdleTimeout(10000);
         Thread.sleep(1500);
-        Assert.assertNull(_expired);
+        assertNull(_expired);
     }
 
     @Test
     public void testMultiple() throws Exception
     {
         Thread.sleep(1500);
-        Assert.assertNotNull(_expired);
+        assertNotNull(_expired);
         _expired=null;
         Thread.sleep(1000);
-        Assert.assertNotNull(_expired);
+        assertNotNull(_expired);
     }
 
 

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -39,7 +39,6 @@ import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -56,6 +55,12 @@ public class WebSocketUpgradeFilter implements Filter, MappedWebSocketCreator, D
     public static final String CONTEXT_ATTRIBUTE_KEY = "contextAttributeKey";
     public static final String CONFIG_ATTRIBUTE_KEY = "configAttributeKey";
 
+    /**
+     *
+     * @param context the {@link ServletContextHandler} to use
+     * @return a configured {@link WebSocketUpgradeFilter} instance
+     * @throws ServletException if the filer cannot be configured
+     */
     public static WebSocketUpgradeFilter configureContext(ServletContextHandler context) throws ServletException
     {
         // Prevent double configure
@@ -90,6 +95,9 @@ public class WebSocketUpgradeFilter implements Filter, MappedWebSocketCreator, D
     
     /**
      * @deprecated use {@link #configureContext(ServletContextHandler)} instead
+     * @param context the ServletContext to use
+     * @return a configured {@link WebSocketUpgradeFilter} instance
+     * @throws ServletException if the filer cannot be configured
      */
     @Deprecated
     public static WebSocketUpgradeFilter configureContext(ServletContext context) throws ServletException
@@ -207,12 +215,13 @@ public class WebSocketUpgradeFilter implements Filter, MappedWebSocketCreator, D
                 return;
             }
             
-            // Since this is a filter, we need to be smart about determining the target path
-            String contextPath = httpreq.getContextPath();
-            String target = httpreq.getRequestURI();
-            if (target.startsWith(contextPath))
+            // Since this is a filter, we need to be smart about determining the target path.
+            // We should rely on the Container for stripping path parameters and its ilk before
+            // attempting to match a specific mapped websocket creator.
+            String target = httpreq.getServletPath();
+            if (httpreq.getPathInfo() != null)
             {
-                target = target.substring(contextPath.length());
+                target = target + httpreq.getPathInfo();
             }
             
             MappedResource<WebSocketCreator> resource = configuration.getMatch(target);
@@ -265,14 +274,13 @@ public class WebSocketUpgradeFilter implements Filter, MappedWebSocketCreator, D
     @Override
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
     
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        out.append(indent).append(" +- configuration=").append(configuration.toString()).append("\n");
-        configuration.dump(out, indent);
+        Dumpable.dumpObjects(out,indent,this,configuration);
     }
     
     public WebSocketServletFactory getFactory()

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,6 +29,7 @@ import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.http.MetaData;
+import org.eclipse.jetty.http2.IStream;
 import org.eclipse.jetty.http2.api.Stream;
 import org.eclipse.jetty.http2.frames.DataFrame;
 import org.eclipse.jetty.http2.frames.HeadersFrame;
@@ -53,7 +54,7 @@ public class HttpSenderOverHTTP2 extends HttpSender
     {
         HttpRequest request = exchange.getRequest();
         String path = relativize(request.getPath());
-        HttpURI uri = new HttpURI(request.getScheme(), request.getHost(), request.getPort(), path, null, request.getQuery(), null);
+        HttpURI uri = HttpURI.createHttpURI(request.getScheme(), request.getHost(), request.getPort(), path, null, request.getQuery(), null);
         MetaData.Request metaData = new MetaData.Request(request.getMethod(), uri, HttpVersion.HTTP_2, request.getHeaders());
         Supplier<HttpFields> trailers = request.getTrailers();
         metaData.setTrailerSupplier(trailers);
@@ -64,8 +65,11 @@ public class HttpSenderOverHTTP2 extends HttpSender
             @Override
             public void succeeded(Stream stream)
             {
-                getHttpChannel().setStream(stream);
-                stream.setIdleTimeout(request.getIdleTimeout());
+                channel.setStream(stream);
+                ((IStream)stream).setAttachment(channel);
+                long idleTimeout = request.getIdleTimeout();
+                if (idleTimeout >= 0)
+                    stream.setIdleTimeout(idleTimeout);
 
                 if (content.hasContent() && !expects100Continue(request))
                 {

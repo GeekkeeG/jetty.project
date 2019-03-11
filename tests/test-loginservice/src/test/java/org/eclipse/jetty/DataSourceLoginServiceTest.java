@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,8 +21,8 @@ package org.eclipse.jetty;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,9 +44,9 @@ import org.eclipse.jetty.toolchain.test.FS;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.Loader;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 /**
  * DataSourceLoginServiceTest
@@ -67,7 +67,7 @@ public class DataSourceLoginServiceTest
 
     
     
-    @BeforeClass
+    @BeforeAll
     public static void setUp() throws Exception
     {
        
@@ -97,7 +97,7 @@ public class DataSourceLoginServiceTest
         _baseUri = _testServer.getBaseUri();
      }
 
-     @AfterClass
+     @AfterAll
      public static void tearDown()
          throws Exception
      {
@@ -149,7 +149,7 @@ public class DataSourceLoginServiceTest
              
              stopClient();
              
-             String newpwd = String.valueOf(System.currentTimeMillis());
+             String newpwd = String.valueOf(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
              
              changePassword("jetty", newpwd);
            
@@ -170,7 +170,7 @@ public class DataSourceLoginServiceTest
      
      protected void changePassword (String user, String newpwd) throws Exception
      {
-         Loader.loadClass("org.apache.derby.jdbc.EmbeddedDriver").newInstance();
+         Loader.loadClass("org.apache.derby.jdbc.EmbeddedDriver").getDeclaredConstructor().newInstance();
          try (Connection connection = DriverManager.getConnection(DatabaseLoginServiceTestServer.__dbURL, "", "");
               Statement stmt = connection.createStatement())
          {

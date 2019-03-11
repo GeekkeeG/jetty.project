@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,46 +18,42 @@
 
 package org.eclipse.jetty.io;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.eclipse.jetty.toolchain.test.AdvancedRunner;
-import org.eclipse.jetty.toolchain.test.annotation.Slow;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.FutureCallback;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.eclipse.jetty.util.thread.TimerScheduler;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
-@RunWith(AdvancedRunner.class)
 public class ByteArrayEndPointTest
 {
     private Scheduler _scheduler;
 
-    @Before
+    @BeforeEach
     public void before() throws Exception
     {
         _scheduler = new TimerScheduler();
         _scheduler.start();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception
     {
         _scheduler.stop();
@@ -91,7 +87,7 @@ public class ByteArrayEndPointTest
         try
         {
             endp.fill(buffer);
-            fail();
+            fail("Expected IOException");
         }
         catch(IOException e)
         {
@@ -204,10 +200,11 @@ public class ByteArrayEndPointTest
 
         fcb = new FutureCallback();
         endp.fillInterested(fcb);
+
         try
         {
             fcb.get(1000,TimeUnit.MILLISECONDS);
-            fail();
+            fail("Expected ExecutionException");
         }
         catch (ExecutionException e)
         {
@@ -264,7 +261,6 @@ public class ByteArrayEndPointTest
         }
     }
 
-    @Slow
     @Test
     public void testIdle() throws Exception
     {
@@ -293,13 +289,13 @@ public class ByteArrayEndPointTest
         assertEquals("test", BufferUtil.toString(buffer));
 
         // Wait for a read timeout.
+        long start = System.nanoTime();
         fcb = new FutureCallback();
         endp.fillInterested(fcb);
-        long start = System.nanoTime();
         try
         {
             fcb.get();
-            fail();
+            fail("Expected ExecutionException");
         }
         catch (ExecutionException t)
         {
@@ -308,40 +304,5 @@ public class ByteArrayEndPointTest
         assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), greaterThan(halfIdleTimeout));
         assertThat("Endpoint open", endp.isOpen(), is(true));
 
-        // We need to delay the write timeout test below from the read timeout test above.
-        // The reason is that the scheduler thread that fails the endPoint WriteFlusher
-        // because of the read timeout above runs concurrently with the write below, and
-        // if it runs just after the write below, the test fails because the write callback
-        // below fails immediately rather than after the idle timeout.
-        Thread.sleep(halfIdleTimeout);
-
-        // Write more than the output capacity, then wait for idle timeout.
-        fcb = new FutureCallback();
-        endp.write(fcb, BufferUtil.toBuffer("This is too long"));
-        start = System.nanoTime();
-        try
-        {
-            fcb.get();
-            fail();
-        }
-        catch (ExecutionException t)
-        {
-            assertThat(t.getCause(), instanceOf(TimeoutException.class));
-        }
-        assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), greaterThan(halfIdleTimeout));
-        // Still open because it has not been oshut or closed explicitly.
-        assertThat("Endpoint open", endp.isOpen(), is(true));
-
-        // Make sure the endPoint is closed when the callback fails.
-        endp.fillInterested(new Closer(endp));
-        Thread.sleep(halfIdleTimeout);
-        // Still open because it has not been oshut or closed explicitly.
-        assertThat("Endpoint open", endp.isOpen(), is(true));
-
-        // Shutdown output.
-        endp.shutdownOutput();
-
-        Thread.sleep(idleTimeout);
-        assertThat("Endpoint closed", endp.isOpen(), is(false));
     }
 }

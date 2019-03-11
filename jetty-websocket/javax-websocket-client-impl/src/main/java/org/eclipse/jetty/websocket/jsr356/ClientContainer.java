@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,6 +20,7 @@ package org.eclipse.jetty.websocket.jsr356;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -38,20 +39,25 @@ import javax.websocket.Extension;
 import javax.websocket.Session;
 import javax.websocket.WebSocketContainer;
 
+import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.DecoratedObjectFactory;
+import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.ShutdownThread;
 import org.eclipse.jetty.websocket.api.InvalidWebSocketException;
+import org.eclipse.jetty.websocket.api.WebSocketBehavior;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
 import org.eclipse.jetty.websocket.api.extensions.ExtensionFactory;
 import org.eclipse.jetty.websocket.client.ClientUpgradeRequest;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.eclipse.jetty.websocket.client.io.UpgradeListener;
 import org.eclipse.jetty.websocket.common.WebSocketSession;
+import org.eclipse.jetty.websocket.common.WebSocketSessionListener;
+import org.eclipse.jetty.websocket.common.scopes.DelegatedContainerScope;
 import org.eclipse.jetty.websocket.common.scopes.SimpleContainerScope;
 import org.eclipse.jetty.websocket.common.scopes.WebSocketContainerScope;
 import org.eclipse.jetty.websocket.jsr356.annotations.AnnotatedEndpointScanner;
@@ -69,7 +75,8 @@ import org.eclipse.jetty.websocket.jsr356.metadata.EndpointMetadata;
  * <p>
  * This should be specific to a JVM if run in a standalone mode. or specific to a WebAppContext if running on the Jetty server.
  */
-public class ClientContainer extends ContainerLifeCycle implements WebSocketContainer, WebSocketContainerScope
+@ManagedObject("JSR356 Client Container")
+public class ClientContainer extends ContainerLifeCycle implements WebSocketContainer, WebSocketContainerScope, WebSocketSessionListener
 {
     private static final Logger LOG = Log.getLogger(ClientContainer.class);
 
@@ -81,6 +88,7 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
     private final EncoderFactory encoderFactory;
     /** The jetty websocket client in use for this container */
     private final WebSocketClient client;
+    private final boolean internalClient;
     /** Tracking for all declared Client endpoints */
     private final Map<Class<?>, EndpointMetadata> endpointClientMetadataCache;
     
@@ -92,6 +100,7 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
         // This constructor is used with Standalone JSR Client usage.
         this(new SimpleContainerScope(WebSocketPolicy.newClientPolicy()));
         client.setDaemon(true);
+        client.addManaged(client.getHttpClient());
     }
     
     /**
@@ -99,26 +108,88 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
      *
      * @param scope the scope of the ServerContainer
      */
-    public ClientContainer(WebSocketContainerScope scope)
+    public ClientContainer(final WebSocketContainerScope scope)
     {
-        boolean trustAll = Boolean.getBoolean("org.eclipse.jetty.websocket.jsr356.ssl-trust-all");
+        this(scope, null);
+        client.addManaged(client.getHttpClient());
+    }
+    
+    /**
+     * This is the entry point for ServerContainer, via ServletContext.getAttribute(ServerContainer.class.getName())
+     *
+     * @param scope the scope of the ServerContainer
+     * @param httpClient the HttpClient instance to use
+     */
+    protected ClientContainer(final WebSocketContainerScope scope, final HttpClient httpClient)
+    {
+        String jsr356TrustAll = System.getProperty("org.eclipse.jetty.websocket.jsr356.ssl-trust-all");
+        
+        WebSocketContainerScope clientScope;
+        if (scope.getPolicy().getBehavior() == WebSocketBehavior.CLIENT)
+        {
+            clientScope = scope;
+        }
+        else
+        {
+            // We need to wrap the scope for the CLIENT Policy behaviors
+            clientScope = new DelegatedContainerScope(WebSocketPolicy.newClientPolicy(), scope);
+        }
+    
+        this.scopeDelegate = clientScope;
+        this.client = new WebSocketClient(scopeDelegate,
+                new JsrEventDriverFactory(scopeDelegate),
+                new JsrSessionFactory(this),
+                httpClient);
+        this.client.addSessionListener(this);
 
-        this.scopeDelegate = scope;
-        client = new WebSocketClient(scope,
-                new JsrEventDriverFactory(scope),
-                new JsrSessionFactory(this));
-        client.getSslContextFactory().setTrustAll(trustAll);
-        addBean(client);
-
+        if(jsr356TrustAll != null)
+        {
+            boolean trustAll = Boolean.parseBoolean(jsr356TrustAll);
+            client.getSslContextFactory().setTrustAll(trustAll);
+        }
+        
+        this.internalClient = true;
+        
         this.endpointClientMetadataCache = new ConcurrentHashMap<>();
         this.decoderFactory = new DecoderFactory(this,PrimitiveDecoderMetadataSet.INSTANCE);
         this.encoderFactory = new EncoderFactory(this,PrimitiveEncoderMetadataSet.INSTANCE);
-
-        ShutdownThread.register(this);
+    }
+    
+    /**
+     * Build a ClientContainer with a specific WebSocketClient in mind.
+     *
+     * @param client the WebSocketClient to use.
+     */
+    public ClientContainer(WebSocketClient client)
+    {
+        this.scopeDelegate = client;
+        this.client = client;
+        this.client.addSessionListener(this);
+        this.internalClient = false;
+        
+        this.endpointClientMetadataCache = new ConcurrentHashMap<>();
+        this.decoderFactory = new DecoderFactory(this,PrimitiveDecoderMetadataSet.INSTANCE);
+        this.encoderFactory = new EncoderFactory(this,PrimitiveEncoderMetadataSet.INSTANCE);
     }
 
     private Session connect(EndpointInstance instance, URI path) throws IOException
     {
+        synchronized (this.client)
+        {
+            if (this.internalClient && !this.client.isStarted())
+            {
+                try
+                {
+                    this.client.start();
+                    addManaged(this.client);
+                }
+                catch (Exception e)
+                {
+                    throw new RuntimeException("Unable to start Client", e);
+                }
+            }
+        }
+        
         Objects.requireNonNull(instance,"EndpointInstance cannot be null");
         Objects.requireNonNull(path,"Path cannot be null");
 
@@ -339,7 +410,7 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
     @Override
     public WebSocketPolicy getPolicy()
     {
-        return scopeDelegate.getPolicy();
+        return client.getPolicy();
     }
 
     @Override
@@ -348,15 +419,33 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
         return scopeDelegate.getSslContextFactory();
     }
 
+    @Override
+    public void addSessionListener(WebSocketSessionListener listener)
+    {
+        client.addSessionListener(listener);
+    }
+
+    @Override
+    public void removeSessionListener(WebSocketSessionListener listener)
+    {
+        client.removeSessionListener(listener);
+    }
+
+    @Override
+    public Collection<WebSocketSessionListener> getSessionListeners()
+    {
+        return client.getSessionListeners();
+    }
+
     private EndpointInstance newClientEndpointInstance(Class<?> endpointClass, ClientEndpointConfig config)
     {
         try
         {
-            return newClientEndpointInstance(endpointClass.newInstance(),config);
+            return newClientEndpointInstance(endpointClass.getDeclaredConstructor().newInstance(),config);
         }
-        catch (InstantiationException | IllegalAccessException e)
+        catch (Exception e)
         {
-            throw new InvalidWebSocketException("Unable to instantiate websocket: " + endpointClass.getClass());
+            throw new InvalidWebSocketException("Unable to instantiate websocket: " + endpointClass.getClass(), e);
         }
     }
 
@@ -415,10 +504,11 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
     @Override
     public void setDefaultMaxBinaryMessageBufferSize(int max)
     {
-        // overall message limit (used in non-streaming)
-        client.getPolicy().setMaxBinaryMessageSize(max);
         // incoming streaming buffer size
         client.setMaxBinaryMessageBufferSize(max);
+
+        // bump overall message limit (used in non-streaming)
+        client.getPolicy().setMaxBinaryMessageSize(max);
     }
 
     @Override
@@ -430,9 +520,10 @@ public class ClientContainer extends ContainerLifeCycle implements WebSocketCont
     @Override
     public void setDefaultMaxTextMessageBufferSize(int max)
     {
-        // overall message limit (used in non-streaming)
-        client.getPolicy().setMaxTextMessageSize(max);
         // incoming streaming buffer size
         client.setMaxTextMessageBufferSize(max);
+
+        // bump overall message limit (used in non-streaming)
+        client.getPolicy().setMaxTextMessageSize(max);
     }
 }

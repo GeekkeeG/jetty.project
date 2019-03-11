@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -31,6 +31,7 @@ import java.security.cert.CertStore;
 import java.security.cert.Certificate;
 import java.security.cert.CollectionCertStoreParameters;
 import java.security.cert.PKIXBuilderParameters;
+import java.security.cert.PKIXCertPathChecker;
 import java.security.cert.X509CertSelector;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -43,12 +44,14 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.net.ssl.CertPathTrustManagerParameters;
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SNIHostName;
@@ -71,8 +74,9 @@ import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.eclipse.jetty.util.StringUtil;
+import org.eclipse.jetty.util.annotation.ManagedAttribute;
+import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.component.Dumpable;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
@@ -87,25 +91,30 @@ import org.eclipse.jetty.util.security.Password;
  * creates SSL context based on these parameters to be
  * used by the SSL connectors.
  */
+@ManagedObject
 public class SslContextFactory extends AbstractLifeCycle implements Dumpable
 {
     public final static TrustManager[] TRUST_ALL_CERTS = new X509TrustManager[]{new X509TrustManager()
     {
+        @Override
         public java.security.cert.X509Certificate[] getAcceptedIssuers()
         {
             return new java.security.cert.X509Certificate[]{};
         }
 
+        @Override
         public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType)
         {
         }
 
+        @Override
         public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType)
         {
         }
     }};
 
     private static final Logger LOG = Log.getLogger(SslContextFactory.class);
+    private static final Logger LOG_CONFIG = LOG.getLogger("config");
 
     public static final String DEFAULT_KEYMANAGERFACTORY_ALGORITHM =
             (Security.getProperty("ssl.KeyManagerFactory.algorithm") == null ?
@@ -120,6 +129,24 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
 
     /** String name of keystore password property. */
     public static final String PASSWORD_PROPERTY = "org.eclipse.jetty.ssl.password";
+
+    /** Default Excluded Protocols List */
+    private static final String[] DEFAULT_EXCLUDED_PROTOCOLS = {"SSL", "SSLv2", "SSLv2Hello", "SSLv3"};
+
+    /** Default Excluded Cipher Suite List */
+    private static final String[] DEFAULT_EXCLUDED_CIPHER_SUITES = {
+            // Exclude weak / insecure ciphers
+            "^.*_(MD5|SHA|SHA1)$",
+            // Exclude ciphers that don't support forward secrecy
+            "^TLS_RSA_.*$",
+            // The following exclusions are present to cleanup known bad cipher
+            // suites that may be accidentally included via include patterns.
+            // The default enabled cipher list in Java will not include these
+            // (but they are available in the supported list).
+            "^SSL_.*$",
+            "^.*_NULL_.*$",
+            "^.*_anon_.*$"
+    };
 
     private final Set<String> _excludeProtocols = new LinkedHashSet<>();
     private final Set<String> _includeProtocols = new LinkedHashSet<>();
@@ -138,7 +165,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     private String _certAlias;
     private Resource _trustStoreResource;
     private String _trustStoreProvider;
-    private String _trustStoreType = "JKS";
+    private String _trustStoreType;
     private boolean _needClientAuth = false;
     private boolean _wantClientAuth = false;
     private Password _keyStorePassword;
@@ -162,10 +189,13 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     private int _sslSessionCacheSize = -1;
     private int _sslSessionTimeout = -1;
     private SSLContext _setContext;
-    private String _endpointIdentificationAlgorithm = null;
+    private String _endpointIdentificationAlgorithm = "HTTPS";
     private boolean _trustAll;
     private boolean _renegotiationAllowed = true;
+    private int _renegotiationLimit = 5;
     private Factory _factory;
+    private PKIXCertPathChecker _pkixCertPathChecker;
+    private HostnameVerifier _hostnameVerifier;
 
     /**
      * Construct an instance of SslContextFactory
@@ -201,8 +231,9 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     private SslContextFactory(boolean trustAll, String keyStorePath)
     {
         setTrustAll(trustAll);
-        addExcludeProtocols("SSL", "SSLv2", "SSLv2Hello", "SSLv3");
-        setExcludeCipherSuites("^.*_(MD5|SHA|SHA1)$");
+        setExcludeProtocols(DEFAULT_EXCLUDED_PROTOCOLS);
+        setExcludeCipherSuites(DEFAULT_EXCLUDED_CIPHER_SUITES);
+
         if (keyStorePath != null)
             setKeyStorePath(keyStorePath);
     }
@@ -217,6 +248,38 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
         synchronized (this)
         {
             load();
+        }
+
+        secureConfigurationCheck();
+    }
+
+    protected void secureConfigurationCheck()
+    {
+        if (isTrustAll())
+            LOG_CONFIG.warn("Trusting all certificates configured for {}",this);
+        if (getEndpointIdentificationAlgorithm()==null)
+            LOG_CONFIG.warn("No Client EndPointIdentificationAlgorithm configured for {}",this);
+
+        SSLEngine engine = _factory._context.createSSLEngine();
+        customize(engine);
+        SSLParameters supported = engine.getSSLParameters();
+
+        for (String protocol : supported.getProtocols())
+        {
+            for (String excluded : DEFAULT_EXCLUDED_PROTOCOLS)
+            {
+                if (excluded.equals(protocol))
+                    LOG_CONFIG.warn("Protocol {} not excluded for {}", protocol, this);
+            }
+        }
+
+        for (String suite : supported.getCipherSuites())
+        {
+            for (String excludedSuiteRegex : DEFAULT_EXCLUDED_CIPHER_SUITES)
+            {
+                if (suite.matches(excludedSuiteRegex))
+                    LOG_CONFIG.warn("Weak cipher suite {} enabled for {}", suite, this);
+            }
         }
     }
 
@@ -333,44 +396,58 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     @Override
     public String dump()
     {
-        return ContainerLifeCycle.dump(this);
+        return Dumpable.dump(this);
     }
     
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        out.append(String.valueOf(this)).append(" trustAll=").append(Boolean.toString(_trustAll)).append(System.lineSeparator());
-    
         try
         {
-            /* Use a pristine SSLEngine (not one from this SslContextFactory).
-             * This will allow for proper detection and identification
-             * of JRE/lib/security/java.security level disabled features
-             */
             SSLEngine sslEngine = SSLContext.getDefault().createSSLEngine();
-    
-            List<Object> selections = new ArrayList<>();
-            
-            // protocols
-            selections.add(new SslSelectionDump("Protocol",
+            Dumpable.dumpObjects(out, indent, this, "trustAll=" + _trustAll,
+                new SslSelectionDump("Protocol",
                     sslEngine.getSupportedProtocols(),
                     sslEngine.getEnabledProtocols(),
                     getExcludeProtocols(),
-                    getIncludeProtocols()));
-            
-            // ciphers
-            selections.add(new SslSelectionDump("Cipher Suite",
+                    getIncludeProtocols()),
+                new SslSelectionDump("Cipher Suite",
                     sslEngine.getSupportedCipherSuites(),
                     sslEngine.getEnabledCipherSuites(),
                     getExcludeCipherSuites(),
                     getIncludeCipherSuites()));
-            
-            ContainerLifeCycle.dump(out, indent, selections);
         }
         catch (NoSuchAlgorithmException ignore)
         {
             LOG.ignore(ignore);
         }
+    }
+
+    List<SslSelectionDump> selectionDump() throws NoSuchAlgorithmException
+    {
+        /* Use a pristine SSLEngine (not one from this SslContextFactory).
+         * This will allow for proper detection and identification
+         * of JRE/lib/security/java.security level disabled features
+         */
+        SSLEngine sslEngine = SSLContext.getDefault().createSSLEngine();
+
+        List<SslSelectionDump> selections = new ArrayList<>();
+
+        // protocols
+        selections.add(new SslSelectionDump("Protocol",
+                sslEngine.getSupportedProtocols(),
+                sslEngine.getEnabledProtocols(),
+                getExcludeProtocols(),
+                getIncludeProtocols()));
+
+        // ciphers
+        selections.add(new SslSelectionDump("Cipher Suite",
+                sslEngine.getSupportedCipherSuites(),
+                sslEngine.getEnabledCipherSuites(),
+                getExcludeCipherSuites(),
+                getIncludeCipherSuites()));
+
+        return selections;
     }
     
     @Override
@@ -393,11 +470,13 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
         _certWilds.clear();
     }
 
+    @ManagedAttribute(value = "The selected TLS protocol versions", readonly = true)
     public String[] getSelectedProtocols()
     {
         return Arrays.copyOf(_selectedProtocols, _selectedProtocols.length);
     }
 
+    @ManagedAttribute(value = "The selected cipher suites", readonly = true)
     public String[] getSelectedCipherSuites()
     {
         return Arrays.copyOf(_selectedCipherSuites, _selectedCipherSuites.length);
@@ -429,6 +508,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The array of protocol names to exclude from
      * {@link SSLEngine#setEnabledProtocols(String[])}
      */
+    @ManagedAttribute("The excluded TLS protocols")
     public String[] getExcludeProtocols()
     {
         return _excludeProtocols.toArray(new String[0]);
@@ -456,6 +536,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The array of protocol names to include in
      * {@link SSLEngine#setEnabledProtocols(String[])}
      */
+    @ManagedAttribute("The included TLS protocols")
     public String[] getIncludeProtocols()
     {
         return _includeProtocols.toArray(new String[0]);
@@ -475,6 +556,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The array of cipher suite names to exclude from
      * {@link SSLEngine#setEnabledCipherSuites(String[])}
      */
+    @ManagedAttribute("The excluded cipher suites")
     public String[] getExcludeCipherSuites()
     {
         return _excludeCipherSuites.toArray(new String[0]);
@@ -504,6 +586,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The array of cipher suite names to include in
      * {@link SSLEngine#setEnabledCipherSuites(String[])}
      */
+    @ManagedAttribute("The included cipher suites")
     public String[] getIncludeCipherSuites()
     {
         return _includeCipherSuites.toArray(new String[0]);
@@ -521,6 +604,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
         _includeCipherSuites.addAll(Arrays.asList(cipherSuites));
     }
 
+    @ManagedAttribute("Whether to respect the cipher suites order")
     public boolean isUseCipherSuitesOrder()
     {
         return _useCipherSuitesOrder;
@@ -534,9 +618,10 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The file or URL of the SSL Key store.
      */
+    @ManagedAttribute("The keyStore path")
     public String getKeyStorePath()
     {
-        return _keyStoreResource.toString();
+        return Objects.toString(_keyStoreResource, null);
     }
 
     /**
@@ -557,6 +642,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The provider of the key store
      */
+    @ManagedAttribute("The keyStore provider name")
     public String getKeyStoreProvider()
     {
         return _keyStoreProvider;
@@ -573,6 +659,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The type of the key store (default "JKS")
      */
+    @ManagedAttribute("The keyStore type")
     public String getKeyStoreType()
     {
         return (_keyStoreType);
@@ -589,6 +676,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return Alias of SSL certificate for the connector
      */
+    @ManagedAttribute("The certificate alias")
     public String getCertAlias()
     {
         return _certAlias;
@@ -606,6 +694,12 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     public void setCertAlias(String certAlias)
     {
         _certAlias = certAlias;
+    }
+
+    @ManagedAttribute("The trustStore path")
+    public String getTrustStorePath()
+    {
+        return Objects.toString(_trustStoreResource, null);
     }
 
     /**
@@ -626,6 +720,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The provider of the trust store
      */
+    @ManagedAttribute("The trustStore provider name")
     public String getTrustStoreProvider()
     {
         return _trustStoreProvider;
@@ -640,15 +735,16 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     }
 
     /**
-     * @return The type of the trust store (default "JKS")
+     * @return The type of the trust store
      */
+    @ManagedAttribute("The trustStore type")
     public String getTrustStoreType()
     {
         return _trustStoreType;
     }
 
     /**
-     * @param trustStoreType The type of the trust store (default "JKS")
+     * @param trustStoreType The type of the trust store
      */
     public void setTrustStoreType(String trustStoreType)
     {
@@ -659,6 +755,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return True if SSL needs client authentication.
      * @see SSLEngine#getNeedClientAuth()
      */
+    @ManagedAttribute("Whether client authentication is needed")
     public boolean getNeedClientAuth()
     {
         return _needClientAuth;
@@ -677,6 +774,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return True if SSL wants client authentication.
      * @see SSLEngine#getWantClientAuth()
      */
+    @ManagedAttribute("Whether client authentication is wanted")
     public boolean getWantClientAuth()
     {
         return _wantClientAuth;
@@ -694,6 +792,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return true if SSL certificate has to be validated
      */
+    @ManagedAttribute("Whether certificates are validated")
     public boolean isValidateCerts()
     {
         return _validateCerts;
@@ -710,6 +809,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return true if SSL certificates of the peer have to be validated
      */
+    @ManagedAttribute("Whether peer certificates are validated")
     public boolean isValidatePeerCerts()
     {
         return _validatePeerCerts;
@@ -792,6 +892,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The SSL provider name, which if set is passed to
      * {@link SSLContext#getInstance(String, String)}
      */
+    @ManagedAttribute("The provider name")
     public String getProvider()
     {
         return _sslProvider;
@@ -810,6 +911,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return The SSL protocol (default "TLS") passed to
      * {@link SSLContext#getInstance(String, String)}
      */
+    @ManagedAttribute("The TLS protocol")
     public String getProtocol()
     {
         return _sslProtocol;
@@ -829,6 +931,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * {@link SecureRandom#getInstance(String)} to obtain the {@link SecureRandom} instance passed to
      * {@link SSLContext#init(javax.net.ssl.KeyManager[], javax.net.ssl.TrustManager[], SecureRandom)}
      */
+    @ManagedAttribute("The SecureRandom algorithm")
     public String getSecureRandomAlgorithm()
     {
         return _secureRandomAlgorithm;
@@ -847,6 +950,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The algorithm name (default "SunX509") used by the {@link KeyManagerFactory}
      */
+    @ManagedAttribute("The KeyManagerFactory algorithm")
     public String getKeyManagerFactoryAlgorithm()
     {
         return _keyManagerFactoryAlgorithm;
@@ -863,6 +967,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return The algorithm name (default "SunX509") used by the {@link TrustManagerFactory}
      */
+    @ManagedAttribute("The TrustManagerFactory algorithm")
     public String getTrustManagerFactoryAlgorithm()
     {
         return _trustManagerFactoryAlgorithm;
@@ -871,6 +976,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return True if all certificates should be trusted if there is no KeyStore or TrustStore
      */
+    @ManagedAttribute("Whether certificates should be trusted even if they are invalid")
     public boolean isTrustAll()
     {
         return _trustAll;
@@ -898,6 +1004,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return whether TLS renegotiation is allowed (true by default)
      */
+    @ManagedAttribute("Whether renegotiation is allowed")
     public boolean isRenegotiationAllowed()
     {
         return _renegotiationAllowed;
@@ -912,8 +1019,29 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     }
 
     /**
+     * @return The number of renegotiations allowed for this connection.  When the limit
+     * is 0 renegotiation will be denied. If the limit is less than 0 then no limit is applied. 
+     */
+    @ManagedAttribute("The max number of renegotiations allowed")
+    public int getRenegotiationLimit()
+    {
+        return _renegotiationLimit;
+    }
+
+    /**
+     * @param renegotiationLimit The number of renegotions allowed for this connection.  
+     * When the limit is 0 renegotiation will be denied. If the limit is less than 0 then no limit is applied.
+     * Default 5.
+     */
+    public void setRenegotiationLimit(int renegotiationLimit)
+    {
+        _renegotiationLimit = renegotiationLimit;
+    }
+    
+    /**
      * @return Path to file that contains Certificate Revocation List
      */
+    @ManagedAttribute("The path to the certificate revocation list file")
     public String getCrlPath()
     {
         return _crlPath;
@@ -931,6 +1059,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * @return Maximum number of intermediate certificates in
      * the certification path (-1 for unlimited)
      */
+    @ManagedAttribute("The maximum number of intermediate certificates")
     public int getMaxCertPathLength()
     {
         return _maxCertPathLength;
@@ -970,19 +1099,31 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return the endpoint identification algorithm
      */
+    @ManagedAttribute("The endpoint identification algorithm")
     public String getEndpointIdentificationAlgorithm()
     {
         return _endpointIdentificationAlgorithm;
     }
 
     /**
-     * When set to "HTTPS" hostname verification will be enabled
-     *
+     * When set to "HTTPS" hostname verification will be enabled.
+     * Deployments can be vulnerable to a man-in-the-middle attack if a EndpointIndentificationAlgorithm
+     * is not set.
      * @param endpointIdentificationAlgorithm Set the endpointIdentificationAlgorithm
      */
     public void setEndpointIdentificationAlgorithm(String endpointIdentificationAlgorithm)
     {
         _endpointIdentificationAlgorithm = endpointIdentificationAlgorithm;
+    }
+
+    public PKIXCertPathChecker getPkixCertPathChecker()
+    {
+        return _pkixCertPathChecker;
+    }
+
+    public void setPkixCertPathChecker(PKIXCertPathChecker pkixCertPatchChecker)
+    {
+        _pkixCertPathChecker = pkixCertPatchChecker;
     }
 
     /**
@@ -994,7 +1135,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      */
     protected KeyStore loadKeyStore(Resource resource) throws Exception
     {
-        String storePassword = _keyStorePassword == null ? null : _keyStorePassword.toString();
+        String storePassword = Objects.toString(_keyStorePassword, null);
         return CertificateUtils.getKeyStore(resource, getKeyStoreType(), getKeyStoreProvider(), storePassword);
     }
 
@@ -1007,20 +1148,16 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      */
     protected KeyStore loadTrustStore(Resource resource) throws Exception
     {
-        String type = getTrustStoreType();
-        String provider = getTrustStoreProvider();
-        String passwd = _trustStorePassword == null ? null : _trustStorePassword.toString();
+        String type = Objects.toString(getTrustStoreType(), getKeyStoreType());
+        String provider = Objects.toString(getTrustStoreProvider(), getKeyStoreProvider());
+        Password passwd = _trustStorePassword;
         if (resource == null || resource.equals(_keyStoreResource))
         {
             resource = _keyStoreResource;
-            if (type == null)
-                type = _keyStoreType;
-            if (provider == null)
-                provider = _keyStoreProvider;
             if (passwd == null)
-                passwd = _keyStorePassword == null ? null : _keyStorePassword.toString();
+                passwd = _keyStorePassword;
         }
-        return CertificateUtils.getKeyStore(resource, type, provider, passwd);
+        return CertificateUtils.getKeyStore(resource, type, provider, Objects.toString(passwd, null));
     }
 
     /**
@@ -1060,7 +1197,8 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
                     }
                 }
 
-                if (!_certHosts.isEmpty() || !_certWilds.isEmpty())
+                // Is SNI needed to select a certificate?
+                if (!_certWilds.isEmpty() || _certHosts.size()>1 || _certHosts.size()==1 && _aliasX509.size()>1)
                 {
                     for (int idx = 0; idx < managers.length; idx++)
                     {
@@ -1085,36 +1223,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
             // Revocation checking is only supported for PKIX algorithm
             if (isValidatePeerCerts() && "PKIX".equalsIgnoreCase(getTrustManagerFactoryAlgorithm()))
             {
-                PKIXBuilderParameters pbParams = new PKIXBuilderParameters(trustStore, new X509CertSelector());
-
-                // Set maximum certification path length
-                pbParams.setMaxPathLength(_maxCertPathLength);
-
-                // Make sure revocation checking is enabled
-                pbParams.setRevocationEnabled(true);
-
-                if (crls != null && !crls.isEmpty())
-                {
-                    pbParams.addCertStore(CertStore.getInstance("Collection", new CollectionCertStoreParameters(crls)));
-                }
-
-                if (_enableCRLDP)
-                {
-                    // Enable Certificate Revocation List Distribution Points (CRLDP) support
-                    System.setProperty("com.sun.security.enableCRLDP", "true");
-                }
-
-                if (_enableOCSP)
-                {
-                    // Enable On-Line Certificate Status Protocol (OCSP) support
-                    Security.setProperty("ocsp.enable", "true");
-
-                    if (_ocspResponderURL != null)
-                    {
-                        // Override location of OCSP Responder
-                        Security.setProperty("ocsp.responderURL", _ocspResponderURL);
-                    }
-                }
+                PKIXBuilderParameters pbParams = newPKIXBuilderParameters(trustStore, crls);
 
                 TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(_trustManagerFactoryAlgorithm);
                 trustManagerFactory.init(new CertPathTrustManagerParameters(pbParams));
@@ -1133,6 +1242,45 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
         return managers;
     }
 
+    protected PKIXBuilderParameters newPKIXBuilderParameters(KeyStore trustStore, Collection<? extends CRL> crls) throws Exception
+    {
+        PKIXBuilderParameters pbParams = new PKIXBuilderParameters(trustStore, new X509CertSelector());
+
+        // Set maximum certification path length
+        pbParams.setMaxPathLength(_maxCertPathLength);
+
+        // Make sure revocation checking is enabled
+        pbParams.setRevocationEnabled(true);
+        
+        if (_pkixCertPathChecker!=null)
+        pbParams.addCertPathChecker(_pkixCertPathChecker);
+
+        if (crls != null && !crls.isEmpty())
+        {
+            pbParams.addCertStore(CertStore.getInstance("Collection", new CollectionCertStoreParameters(crls)));
+        }
+
+        if (_enableCRLDP)
+        {
+            // Enable Certificate Revocation List Distribution Points (CRLDP) support
+            System.setProperty("com.sun.security.enableCRLDP", "true");
+        }
+
+        if (_enableOCSP)
+        {
+            // Enable On-Line Certificate Status Protocol (OCSP) support
+            Security.setProperty("ocsp.enable", "true");
+
+            if (_ocspResponderURL != null)
+            {
+                // Override location of OCSP Responder
+                Security.setProperty("ocsp.responderURL", _ocspResponderURL);
+            }
+        }
+        
+        return pbParams;
+    }
+    
     /**
      * Select protocols to be used by the connector
      * based on configured inclusion and exclusion lists
@@ -1197,7 +1345,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
         {
             if (LOG.isDebugEnabled())
                 LOG.debug("Sorting selected ciphers with {}", comparator);
-            Collections.sort(selected_ciphers, comparator);
+            selected_ciphers.sort(comparator);
         }
 
         _selectedCipherSuites = selected_ciphers.toArray(new String[0]);
@@ -1251,6 +1399,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return true if CRL Distribution Points support is enabled
      */
+    @ManagedAttribute("Whether certificate revocation list distribution points is enabled")
     public boolean isEnableCRLDP()
     {
         return _enableCRLDP;
@@ -1269,6 +1418,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return true if On-Line Certificate Status Protocol support is enabled
      */
+    @ManagedAttribute("Whether online certificate status protocol support is enabled")
     public boolean isEnableOCSP()
     {
         return _enableOCSP;
@@ -1287,6 +1437,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return Location of the OCSP Responder
      */
+    @ManagedAttribute("The online certificate status protocol URL")
     public String getOcspResponderURL()
     {
         return _ocspResponderURL;
@@ -1377,6 +1528,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     /**
      * @return true if SSL Session caching is enabled
      */
+    @ManagedAttribute("Whether TLS session caching is enabled")
     public boolean isSessionCachingEnabled()
     {
         return _sessionCachingEnabled;
@@ -1403,6 +1555,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      *
      * @return SSL session cache size
      */
+    @ManagedAttribute("The maximum TLS session cache size")
     public int getSslSessionCacheSize()
     {
         return _sslSessionCacheSize;
@@ -1426,6 +1579,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      *
      * @return SSL session timeout
      */
+    @ManagedAttribute("The TLS session cache timeout, in seconds")
     public int getSslSessionTimeout()
     {
         return _sslSessionTimeout;
@@ -1442,6 +1596,31 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     public void setSslSessionTimeout(int sslSessionTimeout)
     {
         _sslSessionTimeout = sslSessionTimeout;
+    }
+
+    /**
+     * @return the HostnameVerifier used by a client to verify host names in the server certificate
+     */
+    public HostnameVerifier getHostnameVerifier()
+    {
+        return _hostnameVerifier;
+    }
+
+    /**
+     * <p>Sets a {@code HostnameVerifier} used by a client to verify host names in the server certificate.</p>
+     * <p>The {@code HostnameVerifier} works in conjunction with {@link #setEndpointIdentificationAlgorithm(String)}.</p>
+     * <p>When {@code endpointIdentificationAlgorithm=="HTTPS"} (the default) the JDK TLS implementation
+     * checks that the host name indication set by the client matches the host names in the server certificate.
+     * If this check passes successfully, the {@code HostnameVerifier} is invoked and the application
+     * can perform additional checks and allow/deny the connection to the server.</p>
+     * <p>When {@code endpointIdentificationAlgorithm==null} the JDK TLS implementation will not check
+     * the host names, and any check is therefore performed only by the {@code HostnameVerifier.}</p>
+     *
+     * @param hostnameVerifier the HostnameVerifier used by a client to verify host names in the server certificate
+     */
+    public void setHostnameVerifier(HostnameVerifier hostnameVerifier)
+    {
+        _hostnameVerifier = hostnameVerifier;
     }
 
     /**
@@ -1540,13 +1719,6 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
      * If the given {@code address} is null, it is equivalent to {@link #newSSLEngine()}, otherwise
      * {@link #newSSLEngine(String, int)} is called.
      * <p>
-     * If {@link #getNeedClientAuth()} is {@code true}, then the host name is passed to
-     * {@link #newSSLEngine(String, int)}, possibly incurring in a reverse DNS lookup, which takes time
-     * and may hang the selector (since this method is usually called by the selector thread).
-     * <p>
-     * Otherwise, the host address is passed to {@link #newSSLEngine(String, int)} without DNS lookup
-     * penalties.
-     * <p>
      * Clients that wish to create {@link SSLEngine} instances must use {@link #newSSLEngine(String, int)}.
      *
      * @param address the remote peer address
@@ -1556,10 +1728,7 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     {
         if (address == null)
             return newSSLEngine();
-
-        boolean useHostName = getNeedClientAuth();
-        String hostName = useHostName ? address.getHostName() : address.getAddress().getHostAddress();
-        return newSSLEngine(hostName, address.getPort());
+        return newSSLEngine(address.getHostString(), address.getPort());
     }
 
     /**
@@ -1695,9 +1864,10 @@ public class SslContextFactory extends AbstractLifeCycle implements Dumpable
     @Override
     public String toString()
     {
-        return String.format("%s@%x(%s,%s)",
+        return String.format("%s@%x[provider=%s,keyStore=%s,trustStore=%s]",
                 getClass().getSimpleName(),
                 hashCode(),
+                _sslProvider,
                 _keyStoreResource,
                 _trustStoreResource);
     }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -107,9 +107,9 @@ public class HouseKeeper extends AbstractLifeCycle
      * Get a scheduler. First try a common scheduler, failing that
      * create our own.
      * 
-     * @throws Exception
+     * @throws Exception when the scheduler cannot be started
      */
-    protected void findScheduler () throws Exception
+    protected void findScheduler() throws Exception
     {
         if (_scheduler == null)
         {
@@ -133,9 +133,9 @@ public class HouseKeeper extends AbstractLifeCycle
     
     /**
      * If scavenging is not scheduled, schedule it.
-     * @throws Exception
+     * @throws Exception if any error during scheduling the scavenging
      */
-    protected void startScavenging()  throws Exception
+    protected void startScavenging() throws Exception
     {
         synchronized (this)
         {
@@ -146,7 +146,7 @@ public class HouseKeeper extends AbstractLifeCycle
                     _task.cancel();
                 if (_runner == null)
                     _runner = new Runner();
-                LOG.info("Scavenging every {}ms", _intervalMs);
+                LOG.info("{} Scavenging every {}ms", _sessionIdManager.getWorkerName(), _intervalMs);
                 _task = _scheduler.schedule(_runner,_intervalMs,TimeUnit.MILLISECONDS);
             }
         }
@@ -155,7 +155,7 @@ public class HouseKeeper extends AbstractLifeCycle
     /**
      * If scavenging is scheduled, stop it.
      * 
-     * @throws Exception
+     * @throws Exception if any error during stopping the scavenging
      */
     protected void stopScavenging() throws Exception
     {
@@ -164,7 +164,7 @@ public class HouseKeeper extends AbstractLifeCycle
             if (_task!=null)
             {
                 _task.cancel();
-                LOG.info("Stopped scavenging");
+                LOG.info("{} Stopped scavenging", _sessionIdManager.getWorkerName());
             }
             _task = null;
             if (_ownScheduler) 
@@ -195,22 +195,22 @@ public class HouseKeeper extends AbstractLifeCycle
     /**
      * Set the period between scavenge cycles
      * @param sec the interval (in seconds)
-     * @throws Exception 
+     * @throws Exception if any error during restarting the scavenging
      */
-    public void setIntervalSec (long sec) throws Exception
+    public void setIntervalSec(long sec) throws Exception
     {
         if (isStarted() || isStarting())
         {
             if (sec <= 0)
             {
                 _intervalMs = 0L;
-                LOG.info("Scavenging disabled");
+                LOG.info("{} Scavenging disabled", _sessionIdManager.getWorkerName());
                 stopScavenging();
             }
             else
             {
                 if (sec < 10)
-                    LOG.warn("Short interval of {}sec for session scavenging.", sec);
+                    LOG.warn("{} Short interval of {}sec for session scavenging.", _sessionIdManager.getWorkerName(), sec);
                 
                 _intervalMs=sec*1000L;
 
@@ -261,7 +261,7 @@ public class HouseKeeper extends AbstractLifeCycle
             return;
 
         if (LOG.isDebugEnabled())
-            LOG.debug("Scavenging sessions");
+            LOG.debug("{} scavenging sessions", _sessionIdManager.getWorkerName());
         
         //find the session managers
         for (SessionHandler manager:_sessionIdManager.getSessionHandlers())

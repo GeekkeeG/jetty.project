@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -52,11 +52,12 @@ public class PongContextListener implements ServletContextListener
         try
         {
             Configurator config = new Config();
-            
+
+            // Use manually declared Configurator
             container.addEndpoint(ServerEndpointConfig.Builder.create(PongMessageEndpoint.class,"/ping").configurator(config).build());
             container.addEndpoint(ServerEndpointConfig.Builder.create(PongMessageEndpoint.class,"/pong").configurator(config).build());
+            // Use annotation declared Configurator
             container.addEndpoint(ServerEndpointConfig.Builder.create(PongSocket.class,"/ping-socket").build());
-            container.addEndpoint(ServerEndpointConfig.Builder.create(PongSocket.class,"/pong-socket").build());
         }
         catch (DeploymentException e)
         {

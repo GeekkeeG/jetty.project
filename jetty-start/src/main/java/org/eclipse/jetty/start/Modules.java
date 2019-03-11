@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -36,6 +36,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.eclipse.jetty.util.TopologicalSort;
 
 /**
  * Access for all modules declared, as well as what is enabled.
@@ -151,6 +153,10 @@ public class Modules implements Iterable<Module>
                 for (String xml : module.getXmls())
                 {
                     System.out.printf("        XML: %s%n",xml);
+                }
+                for (String jpms : module.getJPMS())
+                {
+                    System.out.printf("        JPMS: %s%n",jpms);
                 }
                 for (String jvm : module.getJvmArgs())
                 {
@@ -303,7 +309,7 @@ public class Modules implements Iterable<Module>
             {
                 for (Module p:providers)
                 { 
-                    if (p!=module && p.isEnabled())
+                    if (!p.equals(module) && p.isEnabled())
                     {
                         // If the already enabled module is transitive and this enable is not
                         if (p.isTransitive() && !transitive)
@@ -335,12 +341,13 @@ public class Modules implements Iterable<Module>
         }
         
         // Process module dependencies (always processed as may be dynamic)
+        StartLog.debug("Enabled module %s depends on %s",module.getName(),module.getDepends());
         for(String dependsOn:module.getDepends())
         {
             // Look for modules that provide that dependency
             Set<Module> providers = getAvailableProviders(dependsOn);
                 
-            StartLog.debug("Module %s depends on %s provided by ",module,dependsOn,providers);
+            StartLog.debug("Module %s depends on %s provided by %s",module,dependsOn,providers);
             
             // If there are no known providers of the module
             if (providers.isEmpty())
@@ -361,8 +368,8 @@ public class Modules implements Iterable<Module>
             }
             
             // If a provider is already enabled, then add a transitive enable
-            if (providers.stream().filter(Module::isEnabled).count()!=0)
-                providers.stream().filter(m->m.isEnabled()&&m!=module).forEach(m->enable(newlyEnabled,m,"transitive provider of "+dependsOn+" for "+module.getName(),true));
+            if (providers.stream().filter(Module::isEnabled).count()>0)
+                providers.stream().filter(m->m.isEnabled()&&!m.equals(module)).forEach(m->enable(newlyEnabled,m,"transitive provider of "+dependsOn+" for "+module.getName(),true));
             else
             {
                 // Is there an obvious default?
@@ -381,11 +388,11 @@ public class Modules implements Iterable<Module>
     private Set<Module> getAvailableProviders(String name)
     {
         // Get all available providers 
-        
         Set<Module> providers = _provided.get(name);
+        StartLog.debug("Providers of %s are %s",name,providers);
         if (providers==null || providers.isEmpty())
             return Collections.emptySet();
-        
+
         providers = new HashSet<>(providers);
         
         // find all currently provided names by other modules
@@ -409,13 +416,15 @@ public class Modules implements Iterable<Module>
                 {
                     if (provided.contains(p))
                     {
+                        StartLog.debug("Removing provider %s because %s already enabled",provider,p);
                         i.remove();
                         break;
                     }
                 }
             }
         }
-        
+
+        StartLog.debug("Available providers of %s are %s",name,providers);
         return providers;
     }
 

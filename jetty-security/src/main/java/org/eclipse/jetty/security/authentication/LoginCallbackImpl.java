@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -53,51 +53,61 @@ public class LoginCallbackImpl implements LoginCallback
         this.credential = credential;
     }
 
+    @Override
     public Subject getSubject()
     {
         return subject;
     }
 
+    @Override
     public String getUserName()
     {
         return userName;
     }
 
+    @Override
     public Object getCredential()
     {
         return credential;
     }
 
+    @Override
     public boolean isSuccess()
     {
         return success;
     }
 
+    @Override
     public void setSuccess(boolean success)
     {
         this.success = success;
     }
 
+    @Override
     public Principal getUserPrincipal()
     {
         return userPrincipal;
     }
 
+    @Override
     public void setUserPrincipal(Principal userPrincipal)
     {
         this.userPrincipal = userPrincipal;
     }
 
+    @Override
     public String[] getRoles()
     {
         return roles;
     }
 
+    @Override
     public void setRoles(String[] groups)
     {
         this.roles = groups;
     }
 
+    @Override
     public void clearPassword()
     {
         if (credential != null)

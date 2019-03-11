@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -72,12 +72,12 @@ public class HttpField
 
     public int getIntValue()
     {
-        return Integer.valueOf(_value);
+        return Integer.parseInt(_value);
     }
 
     public long getLongValue()
     {
-        return Long.valueOf(_value);
+        return Long.parseLong(_value);
     }
 
     public String[] getValues()
@@ -276,9 +276,12 @@ public class HttpField
 
     public boolean isSameName(HttpField field)
     {
+        @SuppressWarnings("ReferenceEquality")
+        boolean sameObject = (field==this);
+
         if (field==null)
             return false;
-        if (field==this)
+        if (sameObject)
             return true;
         if (_header!=null && _header==field.getHeader())
             return true;
@@ -345,7 +348,7 @@ public class HttpField
 
         public IntValueHttpField(HttpHeader header, String name, String value)
         {
-            this(header,name,value,Integer.valueOf(value));
+            this(header,name,value,Integer.parseInt(value));
         }
 
         public IntValueHttpField(HttpHeader header, String name, int intValue)
@@ -383,7 +386,7 @@ public class HttpField
 
         public LongValueHttpField(HttpHeader header, String name, String value)
         {
-            this(header,name,value,Long.valueOf(value));
+            this(header,name,value,Long.parseLong(value));
         }
 
         public LongValueHttpField(HttpHeader header, String name, long value)

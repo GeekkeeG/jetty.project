@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,12 @@
 
 package org.eclipse.jetty.plus.jndi;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -41,14 +41,15 @@ import javax.naming.Referenceable;
 import javax.naming.StringRefAddr;
 import javax.naming.spi.ObjectFactory;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class TestNamingEntries
 {
     public class ScopeA
     {
+        @Override
         public String toString()
         {
             return this.getClass().getName()+"@"+super.hashCode();
@@ -77,6 +78,7 @@ public class TestNamingEntries
         {
         }
 
+        @Override
         public Object getObjectInstance(Object arg0, Name arg1, Context arg2, Hashtable arg3) throws Exception
         {
             Reference ref = (Reference)arg0;
@@ -99,6 +101,7 @@ public class TestNamingEntries
             super(Integer.parseInt(value.trim()));
         }
 
+        @Override
         public Reference getReference() throws NamingException
         {
             RefAddr refAddr = new StringRefAddr("val", String.valueOf(getValue()));
@@ -112,6 +115,7 @@ public class TestNamingEntries
         {
         }
 
+        @Override
         public Object getObjectInstance(Object arg0, Name arg1, Context arg2, Hashtable arg3) throws Exception
         {
             Reference ref = (Reference)arg0;
@@ -129,7 +133,7 @@ public class TestNamingEntries
 
     private SomeObject someObject;
 
-    @Before
+    @BeforeEach
     public void init()
     {
         this.someObject = new SomeObject(4);
@@ -145,7 +149,7 @@ public class TestNamingEntries
      *
      * @throws Exception on test failure
      */
-    @After
+    @AfterEach
     public void after() throws Exception
     {
         InitialContext icontext = new InitialContext();

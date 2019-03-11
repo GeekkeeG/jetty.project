@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,16 +17,6 @@
 //
 
 package org.eclipse.jetty.util.thread;
-
-import java.lang.reflect.Constructor;
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
-
-import org.eclipse.jetty.util.Loader;
-import org.eclipse.jetty.util.log.Log;
-import org.eclipse.jetty.util.log.Logger;
-import org.eclipse.jetty.util.thread.strategy.EatWhatYouKill;
-import org.eclipse.jetty.util.thread.strategy.ExecuteProduceConsume;
 
 /**
  * <p>An {@link ExecutionStrategy} executes {@link Runnable} tasks produced by a {@link Producer}.

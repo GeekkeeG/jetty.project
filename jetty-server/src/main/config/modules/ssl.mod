@@ -1,3 +1,5 @@
+DO NOT EDIT - See: https://www.eclipse.org/jetty/documentation/current/startup-modules.html
+
 [description]
 Enables a TLS(SSL) Connector on the server.
 This may be used for HTTPS and/or HTTP2 by enabling
@@ -29,9 +31,6 @@ basehome:modules/ssl/keystore|etc/keystore
 ## Connector idle timeout in milliseconds
 # jetty.ssl.idleTimeout=30000
 
-## Connector socket linger time in seconds (-1 to disable)
-# jetty.ssl.soLingerTime=-1
-
 ## Number of acceptors (-1 picks default based on number of cores)
 # jetty.ssl.acceptors=-1
 
@@ -43,6 +42,9 @@ basehome:modules/ssl/keystore|etc/keystore
 
 ## Thread priority delta to give to acceptor threads
 # jetty.ssl.acceptorPriorityDelta=0
+
+## Connect Timeout in milliseconds
+# jetty.ssl.connectTimeout=15000
 
 ## Whether request host names are checked to match any SNI names
 # jetty.ssl.sniHostCheck=true
@@ -56,6 +58,13 @@ basehome:modules/ssl/keystore|etc/keystore
 ### SslContextFactory Configuration
 ## Note that OBF passwords are not secure, just protected from casual observation
 ## See http://www.eclipse.org/jetty/documentation/current/configuring-security-secure-passwords.html
+
+## The Endpoint Identification Algorithm
+## Same as javax.net.ssl.SSLParameters#setEndpointIdentificationAlgorithm(String)
+#jetty.sslContext.endpointIdentificationAlgorithm=HTTPS
+
+## SSL JSSE Provider
+# jetty.sslContext.provider=
 
 ## Keystore file path (relative to $jetty.base)
 # jetty.sslContext.keyStorePath=etc/keystore
@@ -97,3 +106,7 @@ basehome:modules/ssl/keystore|etc/keystore
 
 ## Set the timeout (in seconds) of the SslSession cache timeout
 # jetty.sslContext.sslSessionTimeout=-1
+
+## Allow SSL renegotiation
+# jetty.sslContext.renegotiationAllowed=true
+# jetty.sslContext.renegotiationLimit=5

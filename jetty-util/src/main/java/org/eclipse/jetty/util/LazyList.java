@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -63,7 +63,7 @@ import java.util.ListIterator;
 public class LazyList
     implements Cloneable, Serializable
 {
-    private static final String[] __EMTPY_STRING_ARRAY = new String[0];
+    private static final String[] __EMPTY_STRING_ARRAY = new String[0];
     
     /* ------------------------------------------------------------ */
     private LazyList()
@@ -304,7 +304,7 @@ public class LazyList
     public static String[] toStringArray(Object list)
     {
         if (list==null)
-            return __EMTPY_STRING_ARRAY;
+            return __EMPTY_STRING_ARRAY;
         
         if (list instanceof List)
         {

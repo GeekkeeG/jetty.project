@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,8 +20,8 @@ package org.eclipse.jetty.http;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 
 import org.eclipse.jetty.http.HttpTokens.EndOfContent;
@@ -29,18 +29,12 @@ import org.eclipse.jetty.util.ArrayTernaryTrie;
 import org.eclipse.jetty.util.ArrayTrie;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Trie;
-import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.Utf8StringBuilder;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
-import static org.eclipse.jetty.http.HttpCompliance.LEGACY;
-import static org.eclipse.jetty.http.HttpCompliance.RFC2616;
-import static org.eclipse.jetty.http.HttpCompliance.RFC7230;
-import static org.eclipse.jetty.http.HttpTokens.CARRIAGE_RETURN;
-import static org.eclipse.jetty.http.HttpTokens.LINE_FEED;
-import static org.eclipse.jetty.http.HttpTokens.SPACE;
-import static org.eclipse.jetty.http.HttpTokens.TAB;
+import static org.eclipse.jetty.http.HttpComplianceSection.MULTIPLE_CONTENT_LENGTHS;
+import static org.eclipse.jetty.http.HttpComplianceSection.TRANSFER_ENCODING_WITH_CONTENT_LENGTH;
 
 
 /* ------------------------------------------------------------ */
@@ -93,6 +87,7 @@ public class HttpParser
     @Deprecated
     public final static String __STRICT="org.eclipse.jetty.http.HttpParser.STRICT";
     public final static int INITIAL_URI_LENGTH=256;
+    private final static int MAX_CHUNK_LENGTH=Integer.MAX_VALUE/16-16;
 
     /**
      * Cache of common {@link HttpField}s including: <UL>
@@ -115,6 +110,7 @@ public class HttpParser
         IN_NAME,
         VALUE,
         IN_VALUE,
+        WS_AFTER_NAME,
     }
     
     // States
@@ -153,10 +149,10 @@ public class HttpParser
     private final ComplianceHandler _complianceHandler;
     private final int _maxHeaderBytes;
     private final HttpCompliance _compliance;
+    private final EnumSet<HttpComplianceSection> _compliances;
     private HttpField _field;
     private HttpHeader _header;
     private String _headerString;
-    private HttpHeaderValue _value;
     private String _valueString;
     private int _responseStatus;
     private int _headerBytes;
@@ -172,14 +168,15 @@ public class HttpParser
     private HttpVersion _version;
     private Utf8StringBuilder _uri=new Utf8StringBuilder(INITIAL_URI_LENGTH); // Tune?
     private EndOfContent _endOfContent;
-    private long _contentLength;
+    private boolean _hasContentLength;
+    private long _contentLength = -1;
     private long _contentPosition;
     private int _chunkLength;
     private int _chunkPosition;
     private boolean _headResponse;
     private boolean _cr;
     private ByteBuffer _contentChunk;
-    private Trie<HttpField> _connectionFields;
+    private Trie<HttpField> _fieldCache;
 
     private int _length;
     private final StringBuilder _string=new StringBuilder();
@@ -191,16 +188,21 @@ public class HttpParser
         CACHE.put(new HttpField(HttpHeader.CONNECTION,HttpHeaderValue.UPGRADE));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_ENCODING,"gzip"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_ENCODING,"gzip, deflate"));
+        CACHE.put(new HttpField(HttpHeader.ACCEPT_ENCODING,"gzip, deflate, br"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_ENCODING,"gzip,deflate,sdch"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_LANGUAGE,"en-US,en;q=0.5"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_LANGUAGE,"en-GB,en-US;q=0.8,en;q=0.6"));
+        CACHE.put(new HttpField(HttpHeader.ACCEPT_LANGUAGE,"en-AU,en;q=0.9,it-IT;q=0.8,it;q=0.7,en-GB;q=0.6,en-US;q=0.5"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT_CHARSET,"ISO-8859-1,utf-8;q=0.7,*;q=0.3"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT,"*/*"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT,"image/png,image/*;q=0.8,*/*;q=0.5"));
         CACHE.put(new HttpField(HttpHeader.ACCEPT,"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"));
+        CACHE.put(new HttpField(HttpHeader.ACCEPT,"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8"));
+        CACHE.put(new HttpField(HttpHeader.ACCEPT_RANGES,HttpHeaderValue.BYTES));
         CACHE.put(new HttpField(HttpHeader.PRAGMA,"no-cache"));
         CACHE.put(new HttpField(HttpHeader.CACHE_CONTROL,"private, no-cache, no-cache=Set-Cookie, proxy-revalidate"));
         CACHE.put(new HttpField(HttpHeader.CACHE_CONTROL,"no-cache"));
+        CACHE.put(new HttpField(HttpHeader.CACHE_CONTROL,"max-age=0"));
         CACHE.put(new HttpField(HttpHeader.CONTENT_LENGTH,"0"));
         CACHE.put(new HttpField(HttpHeader.CONTENT_ENCODING,"gzip"));
         CACHE.put(new HttpField(HttpHeader.CONTENT_ENCODING,"deflate"));
@@ -226,18 +228,17 @@ public class HttpParser
         for (HttpHeader h:HttpHeader.values())
             if (!CACHE.put(new HttpField(h,(String)null)))
                 throw new IllegalStateException("CACHE FULL");
-        // Add some more common headers
-        CACHE.put(new HttpField(HttpHeader.REFERER,(String)null));
-        CACHE.put(new HttpField(HttpHeader.IF_MODIFIED_SINCE,(String)null));
-        CACHE.put(new HttpField(HttpHeader.IF_NONE_MATCH,(String)null));
-        CACHE.put(new HttpField(HttpHeader.AUTHORIZATION,(String)null));
-        CACHE.put(new HttpField(HttpHeader.COOKIE,(String)null));
     }
 
     private static HttpCompliance compliance()
     {
         Boolean strict = Boolean.getBoolean(__STRICT);
-        return strict?HttpCompliance.LEGACY:HttpCompliance.RFC7230;
+        if (strict)
+        {
+            LOG.warn("Deprecated property used: "+__STRICT);
+            return HttpCompliance.LEGACY;
+        }
+        return HttpCompliance.RFC7230;
     }
 
     /* ------------------------------------------------------------------------------- */
@@ -287,23 +288,25 @@ public class HttpParser
     /* ------------------------------------------------------------------------------- */
     public HttpParser(RequestHandler handler,int maxHeaderBytes,HttpCompliance compliance)
     {
-        _handler=handler;
-        _requestHandler=handler;
-        _responseHandler=null;
-        _maxHeaderBytes=maxHeaderBytes;
-        _compliance=compliance==null?compliance():compliance;
-        _complianceHandler=(ComplianceHandler)(handler instanceof ComplianceHandler?handler:null);
+        this(handler,null,maxHeaderBytes,compliance==null?compliance():compliance);
     }
 
     /* ------------------------------------------------------------------------------- */
     public HttpParser(ResponseHandler handler,int maxHeaderBytes,HttpCompliance compliance)
     {
-        _handler=handler;
-        _requestHandler=null;
-        _responseHandler=handler;
+        this(null,handler,maxHeaderBytes,compliance==null?compliance():compliance);
+    }
+
+    /* ------------------------------------------------------------------------------- */
+    private HttpParser(RequestHandler requestHandler,ResponseHandler responseHandler,int maxHeaderBytes,HttpCompliance compliance)
+    {
+        _handler=requestHandler!=null?requestHandler:responseHandler;
+        _requestHandler=requestHandler;
+        _responseHandler=responseHandler;
         _maxHeaderBytes=maxHeaderBytes;
-        _compliance=compliance==null?compliance():compliance;
-        _complianceHandler=(ComplianceHandler)(handler instanceof ComplianceHandler?handler:null);
+        _compliance=compliance;
+        _compliances=compliance.sections();
+        _complianceHandler=(ComplianceHandler)(_handler instanceof ComplianceHandler?_handler:null);
     }
 
     /* ------------------------------------------------------------------------------- */
@@ -311,29 +314,50 @@ public class HttpParser
     {
         return _handler;
     }
+
+    /* ------------------------------------------------------------------------------- */
+    /** Check RFC compliance violation
+     * @param violation The compliance section violation
+     * @return True if the current compliance level is set so as to Not allow this violation
+     */
+    protected boolean complianceViolation(HttpComplianceSection violation)
+    {
+        return complianceViolation(violation,null);
+    }
     
     /* ------------------------------------------------------------------------------- */
     /** Check RFC compliance violation
-     * @param compliance The compliance level violated
+     * @param violation The compliance section violation
      * @param reason The reason for the violation
      * @return True if the current compliance level is set so as to Not allow this violation
      */
-    protected boolean complianceViolation(HttpCompliance compliance,String reason)
+    protected boolean complianceViolation(HttpComplianceSection violation, String reason)
     {
-        if (_complianceHandler==null)
-            return _compliance.ordinal()>=compliance.ordinal();
-        if (_compliance.ordinal()<compliance.ordinal())
-        {
-            _complianceHandler.onComplianceViolation(_compliance,compliance,reason);
-            return false;
-        }
-        return true;
+        if (_compliances.contains(violation))
+            return true;
+        if (reason==null)
+            reason=violation.description;
+        if (_complianceHandler!=null)
+            _complianceHandler.onComplianceViolation(_compliance,violation,reason);
+        
+        return false;
     }
 
     /* ------------------------------------------------------------------------------- */
-    protected String legacyString(String orig, String cached)
+    protected void handleViolation(HttpComplianceSection section,String reason)
+    {
+        if (_complianceHandler!=null)
+            _complianceHandler.onComplianceViolation(_compliance,section,reason);
+    }
+
+    /* ------------------------------------------------------------------------------- */
+    protected String caseInsensitiveHeader(String orig, String normative)
     {                   
-        return (_compliance!=LEGACY || orig.equals(cached) || complianceViolation(RFC2616,"case sensitive"))?cached:orig;
+        if (_compliances.contains(HttpComplianceSection.FIELD_NAME_CASE_INSENSITIVE))
+            return normative;
+        if (!orig.equals(normative))
+            handleViolation(HttpComplianceSection.FIELD_NAME_CASE_INSENSITIVE,orig);
+        return orig;
     }
     
     /* ------------------------------------------------------------------------------- */
@@ -424,67 +448,16 @@ public class HttpParser
     }
 
     /* ------------------------------------------------------------------------------- */
-    enum CharState { ILLEGAL, CR, LF, LEGAL }
-    private final static CharState[] __charState;
-    static
-    {
-        // token          = 1*tchar
-        // tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
-        //                / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
-        //                / DIGIT / ALPHA
-        //                ; any VCHAR, except delimiters
-        // quoted-string  = DQUOTE *( qdtext / quoted-pair ) DQUOTE
-        // qdtext         = HTAB / SP /%x21 / %x23-5B / %x5D-7E / obs-text
-        // obs-text       = %x80-FF
-        // comment        = "(" *( ctext / quoted-pair / comment ) ")"
-        // ctext          = HTAB / SP / %x21-27 / %x2A-5B / %x5D-7E / obs-text
-        // quoted-pair    = "\" ( HTAB / SP / VCHAR / obs-text )
-
-        __charState=new CharState[256];
-        Arrays.fill(__charState,CharState.ILLEGAL);
-        __charState[LINE_FEED]=CharState.LF;
-        __charState[CARRIAGE_RETURN]=CharState.CR;
-        __charState[TAB]=CharState.LEGAL;
-        __charState[SPACE]=CharState.LEGAL;
-
-        __charState['!']=CharState.LEGAL;
-        __charState['#']=CharState.LEGAL;
-        __charState['$']=CharState.LEGAL;
-        __charState['%']=CharState.LEGAL;
-        __charState['&']=CharState.LEGAL;
-        __charState['\'']=CharState.LEGAL;
-        __charState['*']=CharState.LEGAL;
-        __charState['+']=CharState.LEGAL;
-        __charState['-']=CharState.LEGAL;
-        __charState['.']=CharState.LEGAL;
-        __charState['^']=CharState.LEGAL;
-        __charState['_']=CharState.LEGAL;
-        __charState['`']=CharState.LEGAL;
-        __charState['|']=CharState.LEGAL;
-        __charState['~']=CharState.LEGAL;
-
-        __charState['"']=CharState.LEGAL;
-
-        __charState['\\']=CharState.LEGAL;
-        __charState['(']=CharState.LEGAL;
-        __charState[')']=CharState.LEGAL;
-        Arrays.fill(__charState,0x21,0x27+1,CharState.LEGAL);
-        Arrays.fill(__charState,0x2A,0x5B+1,CharState.LEGAL);
-        Arrays.fill(__charState,0x5D,0x7E+1,CharState.LEGAL);
-        Arrays.fill(__charState,0x80,0xFF+1,CharState.LEGAL);
-
-    }
-
-    /* ------------------------------------------------------------------------------- */
-    private byte next(ByteBuffer buffer)
+    private HttpTokens.Token next(ByteBuffer buffer)
     {
         byte ch = buffer.get();
 
-        CharState s = __charState[0xff & ch];
-        switch(s)
+        HttpTokens.Token t = HttpTokens.TOKENS[0xff & ch];
+        
+        switch(t.getType())
         {
-            case ILLEGAL:
-                throw new IllegalCharacterException(_state,ch,buffer);
+            case CNTL:
+                throw new IllegalCharacterException(_state,t,buffer);
 
             case LF:
                 _cr=false;
@@ -503,16 +476,25 @@ public class HttpParser
                     return next(buffer);
                 }
 
-                // Can return 0 here to indicate the need for more characters,
-                // because a real 0 in the buffer would cause a BadMessage below
-                return 0;
+                return null;
 
-            case LEGAL:
+            case ALPHA:
+            case DIGIT:
+            case TCHAR:
+            case VCHAR:
+            case HTAB:
+            case SPACE:
+            case OTEXT:
+            case COLON:
                 if (_cr)
                     throw new BadMessageException("Bad EOL");
+                break;
+                
+            default:
+                break;
         }
 
-        return ch;
+        return t;
     }
 
     /* ------------------------------------------------------------------------------- */
@@ -547,19 +529,30 @@ public class HttpParser
         // Quick start look
         while (_state==State.START && buffer.hasRemaining())
         {
-            int ch=next(buffer);
-
-            if (ch > SPACE)
-            {
-                _string.setLength(0);
-                _string.append((char)ch);
-                setState(_requestHandler!=null?State.METHOD:State.RESPONSE_VERSION);
-                return false;
-            }
-            else if (ch==0)
+            HttpTokens.Token t = next(buffer);
+            if (t==null)
                 break;
-            else if (ch<0)
-                throw new BadMessageException();
+            
+            switch(t.getType())
+            {
+                case ALPHA:
+                case DIGIT:
+                case TCHAR:
+                case VCHAR:
+                {
+                    _string.setLength(0);
+                    _string.append(t.getChar());
+                    setState(_requestHandler!=null?State.METHOD:State.RESPONSE_VERSION);
+                    return false;
+                }
+                case OTEXT:
+                case SPACE:
+                case HTAB:
+                    throw new IllegalCharacterException(_state,t,buffer);
+                    
+                default:
+                    break;
+            }
 
             // count this white space as a header byte to avoid DOS
             if (_maxHeaderBytes>0 && ++_headerBytes>_maxHeaderBytes)
@@ -618,8 +611,8 @@ public class HttpParser
         while (_state.ordinal()<State.HEADER.ordinal() && buffer.hasRemaining() && !handle)
         {
             // process each character
-            byte ch=next(buffer);
-            if (ch==0)
+            HttpTokens.Token t=next(buffer);
+            if (t==null)
                 break;
 
             if (_maxHeaderBytes>0 && ++_headerBytes>_maxHeaderBytes)
@@ -642,239 +635,319 @@ public class HttpParser
             switch (_state)
             {
                 case METHOD:
-                    if (ch == SPACE)
+                    switch(t.getType())
                     {
-                        _length=_string.length();
-                        _methodString=takeString();
-                        HttpMethod method=HttpMethod.CACHE.get(_methodString);
-                        if (method!=null)
-                            _methodString=legacyString(_methodString,method.asString());
-                        setState(State.SPACE1);
-                    }
-                    else if (ch < SPACE)
-                    {
-                        if (ch==LINE_FEED)
+                        case SPACE:
+                            _length=_string.length();
+                            _methodString=takeString();
+
+                            if (_compliances.contains(HttpComplianceSection.METHOD_CASE_SENSITIVE))
+                            {
+                                HttpMethod method=HttpMethod.CACHE.get(_methodString);
+                                if (method!=null)
+                                    _methodString = method.asString();
+                            }
+                            else
+                            {
+                                HttpMethod method=HttpMethod.INSENSITIVE_CACHE.get(_methodString);
+
+                                if (method!=null)
+                                {
+                                    if (!method.asString().equals(_methodString))
+                                        handleViolation(HttpComplianceSection.METHOD_CASE_SENSITIVE,_methodString);
+                                    _methodString = method.asString();
+                                }
+                            }
+
+                            setState(State.SPACE1);
+                            break;
+                        
+                        case LF:
                             throw new BadMessageException("No URI");
-                        else
-                            throw new IllegalCharacterException(_state,ch,buffer);
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                            _string.append(t.getChar());
+                            break;
+
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    else
-                        _string.append((char)ch);
                     break;
 
                 case RESPONSE_VERSION:
-                    if (ch == HttpTokens.SPACE)
+                    switch(t.getType())
                     {
-                        _length=_string.length();
-                        String version=takeString();
-                        _version=HttpVersion.CACHE.get(version);
-                        if (_version==null)
-                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Unknown Version");
-                        setState(State.SPACE1);
+                        case SPACE:
+                            _length=_string.length();
+                            String version=takeString();
+                            _version=HttpVersion.CACHE.get(version);
+                            checkVersion();
+                            setState(State.SPACE1);
+                            break;
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                            _string.append(t.getChar());
+                            break;
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    else if (ch < HttpTokens.SPACE)
-                        throw new IllegalCharacterException(_state,ch,buffer);
-                    else
-                        _string.append((char)ch);
                     break;
 
                 case SPACE1:
-                    if (ch > HttpTokens.SPACE || ch<0)
+                    switch(t.getType())
                     {
-                        if (_responseHandler!=null)
-                        {
-                            setState(State.STATUS);
-                            setResponseStatus(ch-'0');
-                        }
-                        else
-                        {
-                            _uri.reset();
-                            setState(State.URI);
-                            // quick scan for space or EoBuffer
-                            if (buffer.hasArray())
+                        case SPACE:
+                            break;
+                            
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                            if (_responseHandler!=null)
                             {
-                                byte[] array=buffer.array();
-                                int p=buffer.arrayOffset()+buffer.position();
-                                int l=buffer.arrayOffset()+buffer.limit();
-                                int i=p;
-                                while (i<l && array[i]>HttpTokens.SPACE)
-                                    i++;
-
-                                int len=i-p;
-                                _headerBytes+=len;
-
-                                if (_maxHeaderBytes>0 && ++_headerBytes>_maxHeaderBytes)
-                                {
-                                    LOG.warn("URI is too large >"+_maxHeaderBytes);
-                                    throw new BadMessageException(HttpStatus.URI_TOO_LONG_414);
-                                }
-                                _uri.append(array,p-1,len+1);
-                                buffer.position(i-buffer.arrayOffset());
+                                if (t.getType()!=HttpTokens.Type.DIGIT)
+                                    throw new IllegalCharacterException(_state,t,buffer);
+                                setState(State.STATUS);
+                                setResponseStatus(t.getByte()-'0');
                             }
                             else
-                                _uri.append(ch);
-                        }
-                    }
-                    else if (ch < HttpTokens.SPACE)
-                    {
-                        throw new BadMessageException(HttpStatus.BAD_REQUEST_400,_requestHandler!=null?"No URI":"No Status");
+                            {
+                                _uri.reset();
+                                setState(State.URI);
+                                // quick scan for space or EoBuffer
+                                if (buffer.hasArray())
+                                {
+                                    byte[] array=buffer.array();
+                                    int p=buffer.arrayOffset()+buffer.position();
+                                    int l=buffer.arrayOffset()+buffer.limit();
+                                    int i=p;
+                                    while (i<l && array[i]>HttpTokens.SPACE)
+                                        i++;
+
+                                    int len=i-p;
+                                    _headerBytes+=len;
+
+                                    if (_maxHeaderBytes>0 && ++_headerBytes>_maxHeaderBytes)
+                                    {
+                                        LOG.warn("URI is too large >"+_maxHeaderBytes);
+                                        throw new BadMessageException(HttpStatus.URI_TOO_LONG_414);
+                                    }
+                                    _uri.append(array,p-1,len+1);
+                                    buffer.position(i-buffer.arrayOffset());
+                                }
+                                else
+                                    _uri.append(t.getByte());
+                            }
+                            break;
+
+                        default:
+                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,_requestHandler!=null?"No URI":"No Status");
                     }
                     break;
 
                 case STATUS:
-                    if (ch == HttpTokens.SPACE)
+                    switch(t.getType())
                     {
-                        setState(State.SPACE2);
-                    }
-                    else if (ch>='0' && ch<='9')
-                    {
-                        _responseStatus=_responseStatus*10+(ch-'0');
-                    }
-                    else if (ch < HttpTokens.SPACE && ch>=0)
-                    {
-                        setState(State.HEADER);
-                        handle=_responseHandler.startResponse(_version, _responseStatus, null)||handle;
-                    }
-                    else
-                    {
-                        throw new BadMessageException();
+                        case SPACE:
+                            setState(State.SPACE2);
+                            break;
+                            
+                        case DIGIT:
+                            _responseStatus=_responseStatus*10+(t.getByte()-'0');
+                            if (_responseStatus>=1000)
+                                throw new BadMessageException("Bad status");
+                            break;
+                            
+                        case LF:
+                            setState(State.HEADER);
+                            handle |= _responseHandler.startResponse(_version, _responseStatus, null);
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
                     break;
 
                 case URI:
-                    if (ch == HttpTokens.SPACE)
+                    switch(t.getType())
                     {
-                        setState(State.SPACE2);
-                    }
-                    else if (ch < HttpTokens.SPACE && ch>=0)
-                    {
-                        // HTTP/0.9
-                        if (complianceViolation(RFC7230,"HTTP/0.9"))
-                            throw new BadMessageException("HTTP/0.9 not supported");
-                        handle=_requestHandler.startRequest(_methodString,_uri.toString(), HttpVersion.HTTP_0_9);
-                        setState(State.END);
-                        BufferUtil.clear(buffer);
-                        handle= handleHeaderContentMessage() || handle;
-                    }
-                    else
-                    {
-                        _uri.append(ch);
+                        case SPACE:
+                            setState(State.SPACE2);
+                            break;
+                    
+                        case LF:
+                            // HTTP/0.9
+                            if (complianceViolation(HttpComplianceSection.NO_HTTP_0_9,"No request version"))
+                                throw new BadMessageException("HTTP/0.9 not supported");
+                            handle=_requestHandler.startRequest(_methodString,_uri.toString(), HttpVersion.HTTP_0_9);
+                            setState(State.END);
+                            BufferUtil.clear(buffer);
+                            handle |= handleHeaderContentMessage();
+                            break;
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                        case OTEXT:
+                            _uri.append(t.getByte());
+                            break;
+                                                        
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
                     break;
 
                 case SPACE2:
-                    if (ch > HttpTokens.SPACE)
+                    switch(t.getType())
                     {
-                        _string.setLength(0);
-                        _string.append((char)ch);
-                        if (_responseHandler!=null)
-                        {
-                            _length=1;
-                            setState(State.REASON);
-                        }
-                        else
-                        {
-                            setState(State.REQUEST_VERSION);
+                        case SPACE:
+                            break;
 
-                            // try quick look ahead for HTTP Version
-                            HttpVersion version;
-                            if (buffer.position()>0 && buffer.hasArray())
-                                version=HttpVersion.lookAheadGet(buffer.array(),buffer.arrayOffset()+buffer.position()-1,buffer.arrayOffset()+buffer.limit());
-                            else
-                                version=HttpVersion.CACHE.getBest(buffer,0,buffer.remaining());
-
-                            if (version!=null)
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                            _string.setLength(0);
+                            _string.append(t.getChar());
+                            if (_responseHandler!=null)
                             {
-                                int pos = buffer.position()+version.asString().length()-1;
-                                if (pos<buffer.limit())
+                                _length=1;
+                                setState(State.REASON);
+                            }
+                            else
+                            {
+                                setState(State.REQUEST_VERSION);
+
+                                // try quick look ahead for HTTP Version
+                                HttpVersion version;
+                                if (buffer.position()>0 && buffer.hasArray())
+                                    version=HttpVersion.lookAheadGet(buffer.array(),buffer.arrayOffset()+buffer.position()-1,buffer.arrayOffset()+buffer.limit());
+                                else
+                                    version=HttpVersion.CACHE.getBest(buffer,0,buffer.remaining());
+
+                                if (version!=null)
                                 {
-                                    byte n=buffer.get(pos);
-                                    if (n==HttpTokens.CARRIAGE_RETURN)
+                                    int pos = buffer.position()+version.asString().length()-1;
+                                    if (pos<buffer.limit())
                                     {
-                                        _cr=true;
-                                        _version=version;
-                                        _string.setLength(0);
-                                        buffer.position(pos+1);
-                                    }
-                                    else if (n==HttpTokens.LINE_FEED)
-                                    {
-                                        _version=version;
-                                        _string.setLength(0);
-                                        buffer.position(pos);
+                                        byte n=buffer.get(pos);
+                                        if (n==HttpTokens.CARRIAGE_RETURN)
+                                        {
+                                            _cr=true;
+                                            _version=version;
+                                            checkVersion();
+                                            _string.setLength(0);
+                                            buffer.position(pos+1);
+                                        }
+                                        else if (n==HttpTokens.LINE_FEED)
+                                        {
+                                            _version=version;
+                                            checkVersion();
+                                            _string.setLength(0);
+                                            buffer.position(pos);
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                    else if (ch == HttpTokens.LINE_FEED)
-                    {
-                        if (_responseHandler!=null)
-                        {
-                            setState(State.HEADER);
-                            handle=_responseHandler.startResponse(_version, _responseStatus, null)||handle;
-                        }
-                        else
-                        {
-                            // HTTP/0.9
-                            if (complianceViolation(RFC7230,"HTTP/0.9"))
-                                throw new BadMessageException("HTTP/0.9 not supported");
+                            break;
+                            
+                        case LF:
+                            if (_responseHandler!=null)
+                            {
+                                setState(State.HEADER);
+                                handle |= _responseHandler.startResponse(_version, _responseStatus, null);
+                            }
+                            else
+                            {
+                                // HTTP/0.9
+                                if (complianceViolation(HttpComplianceSection.NO_HTTP_0_9,"No request version"))
+                                    throw new BadMessageException("HTTP/0.9 not supported");
 
-                            handle=_requestHandler.startRequest(_methodString,_uri.toString(), HttpVersion.HTTP_0_9);
-                            setState(State.END);
-                            BufferUtil.clear(buffer);
-                            handle= handleHeaderContentMessage() || handle;
-                        }
+                                handle=_requestHandler.startRequest(_methodString,_uri.toString(), HttpVersion.HTTP_0_9);
+                                setState(State.END);
+                                BufferUtil.clear(buffer);
+                                handle |= handleHeaderContentMessage();
+                            }
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    else if (ch<0)
-                        throw new BadMessageException();
                     break;
 
                 case REQUEST_VERSION:
-                    if (ch == HttpTokens.LINE_FEED)
+                    switch(t.getType())
                     {
-                        if (_version==null)
-                        {
-                            _length=_string.length();
-                            _version=HttpVersion.CACHE.get(takeString());
-                        }
-                        if (_version==null)
-                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Unknown Version");
+                        case LF:
+                            if (_version==null)
+                            {
+                                _length=_string.length();
+                                _version=HttpVersion.CACHE.get(takeString());
+                            }
+                            checkVersion();
 
-                        // Should we try to cache header fields?
-                        if (_connectionFields==null && _version.getVersion()>=HttpVersion.HTTP_1_1.getVersion() && _handler.getHeaderCacheSize()>0)
-                        {
-                            int header_cache = _handler.getHeaderCacheSize();
-                            _connectionFields=new ArrayTernaryTrie<>(header_cache);
-                        }
+                            // Should we try to cache header fields?
+                            if (_fieldCache==null && _version.getVersion()>=HttpVersion.HTTP_1_1.getVersion() && _handler.getHeaderCacheSize()>0)
+                            {
+                                int header_cache = _handler.getHeaderCacheSize();
+                                _fieldCache=new ArrayTernaryTrie<>(header_cache);
+                            }
 
-                        setState(State.HEADER);
+                            setState(State.HEADER);
 
-                        handle=_requestHandler.startRequest(_methodString,_uri.toString(), _version)||handle;
-                        continue;
+                            handle |= _requestHandler.startRequest(_methodString,_uri.toString(), _version);
+                            continue;
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                            _string.append(t.getChar());
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    else if (ch>=HttpTokens.SPACE)
-                        _string.append((char)ch);
-                    else
-                        throw new BadMessageException();
-
                     break;
 
                 case REASON:
-                    if (ch == HttpTokens.LINE_FEED)
+                    switch(t.getType())
                     {
-                        String reason=takeString();
-                        setState(State.HEADER);
-                        handle=_responseHandler.startResponse(_version, _responseStatus, reason)||handle;
-                        continue;
-                    }
-                    else if (ch>=HttpTokens.SPACE)
-                    {
-                        _string.append((char)ch);
-                        if (ch!=' '&&ch!='\t')
+                        case LF:
+                            String reason=takeString();
+                            setState(State.HEADER);
+                            handle |= _responseHandler.startResponse(_version, _responseStatus, reason);
+                            continue;
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                        case OTEXT: // TODO should this be UTF8
+                            _string.append(t.getChar());
                             _length=_string.length();
+                            break;
+                            
+                        case SPACE:
+                        case HTAB:
+                            _string.append(t.getChar());
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    else
-                        throw new BadMessageException();
                     break;
 
                 default:
@@ -883,6 +956,15 @@ public class HttpParser
         }
 
         return handle;
+    }
+
+    private void checkVersion() 
+    {
+        if (_version==null)
+            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Unknown Version");
+        
+        if (_version.getVersion()<10 || _version.getVersion()>20)
+            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Bad Version");
     }
 
     private void parsedHeader()
@@ -897,11 +979,19 @@ public class HttpParser
                 switch (_header)
                 {
                     case CONTENT_LENGTH:
-                        if (_endOfContent == EndOfContent.CONTENT_LENGTH)
+                        if (_hasContentLength)
                         {
-                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400, "Duplicate Content-Length");
+                            if(complianceViolation(MULTIPLE_CONTENT_LENGTHS))
+                                throw new BadMessageException(HttpStatus.BAD_REQUEST_400,MULTIPLE_CONTENT_LENGTHS.description);
+                            if (convertContentLength(_valueString)!=_contentLength)
+                                throw new BadMessageException(HttpStatus.BAD_REQUEST_400,MULTIPLE_CONTENT_LENGTHS.description);
                         }
-                        else if (_endOfContent != EndOfContent.CHUNKED_CONTENT)
+                        _hasContentLength = true;
+
+                        if (_endOfContent == EndOfContent.CHUNKED_CONTENT && complianceViolation(TRANSFER_ENCODING_WITH_CONTENT_LENGTH))
+                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Bad Content-Length");
+
+                        if (_endOfContent != EndOfContent.CHUNKED_CONTENT)
                         {
                             _contentLength=convertContentLength(_valueString);
                             if (_contentLength <= 0)
@@ -912,34 +1002,44 @@ public class HttpParser
                         break;
 
                     case TRANSFER_ENCODING:
-                        if (_value==HttpHeaderValue.CHUNKED)
+                        if (_hasContentLength && complianceViolation(TRANSFER_ENCODING_WITH_CONTENT_LENGTH))
+                            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Transfer-Encoding and Content-Length");
+
+                        if (HttpHeaderValue.CHUNKED.is(_valueString))
                         {
                             _endOfContent=EndOfContent.CHUNKED_CONTENT;
                             _contentLength=-1;
                         }
                         else
                         {
-                            if (_valueString.endsWith(HttpHeaderValue.CHUNKED.toString()))
+                            List<String> values = new QuotedCSV(_valueString).getValues();
+                            if (values.size()>0 && HttpHeaderValue.CHUNKED.is(values.get(values.size()-1)))
+                            {
                                 _endOfContent=EndOfContent.CHUNKED_CONTENT;
-                            else if (_valueString.contains(HttpHeaderValue.CHUNKED.toString()))
+                                _contentLength=-1;
+                            }
+                            else if (values.stream().anyMatch(HttpHeaderValue.CHUNKED::is))
                                 throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Bad chunking");
                         }
+                        
+                        
                         break;
 
                     case HOST:
                         _host=true;
                         if (!(_field instanceof HostPortHttpField) && _valueString!=null && !_valueString.isEmpty())
                         {
-                            _field=new HostPortHttpField(_header,legacyString(_headerString,_header.asString()),_valueString);
-                            add_to_connection_trie=_connectionFields!=null;
+                            _field=new HostPortHttpField(_header,
+                                _compliances.contains(HttpComplianceSection.FIELD_NAME_CASE_INSENSITIVE)?_header.asString():_headerString,
+                                _valueString);
+                            add_to_connection_trie=_fieldCache!=null;
                         }
                       break;
 
                     case CONNECTION:
-                        // Don't cache if not persistent
-                        if (_valueString!=null && _valueString.contains("close"))
-                            _connectionFields=null;
-
+                        // Don't cache headers if not persistent
+                        if (HttpHeaderValue.CLOSE.is(_valueString) || new QuotedCSV(_valueString).getValues().stream().anyMatch(HttpHeaderValue.CLOSE::is))
+                            _fieldCache=null;
                         break;
 
                     case AUTHORIZATION:
@@ -950,18 +1050,18 @@ public class HttpParser
                     case COOKIE:
                     case CACHE_CONTROL:
                     case USER_AGENT:
-                        add_to_connection_trie=_connectionFields!=null && _field==null;
+                        add_to_connection_trie=_fieldCache!=null && _field==null;
                         break;
 
                     default: break;
 
                 }
 
-                if (add_to_connection_trie && !_connectionFields.isFull() && _header!=null && _valueString!=null)
+                if (add_to_connection_trie && !_fieldCache.isFull() && _header!=null && _valueString!=null)
                 {
                     if (_field==null)
-                        _field=new HttpField(_header,legacyString(_headerString,_header.asString()),_valueString);
-                    _connectionFields.put(_field);
+                        _field=new HttpField(_header,caseInsensitiveHeader(_headerString,_header.asString()),_valueString);
+                    _fieldCache.put(_field);
                 }
             }
             _handler.parsedHeader(_field!=null?_field:new HttpField(_header,_headerString,_valueString));
@@ -969,7 +1069,6 @@ public class HttpParser
 
         _headerString=_valueString=null;
         _header=null;
-        _value=null;
         _field=null;
     }
 
@@ -981,7 +1080,6 @@ public class HttpParser
 
         _headerString=_valueString=null;
         _header=null;
-        _value=null;
         _field=null;
     }
     
@@ -994,13 +1092,13 @@ public class HttpParser
         catch(NumberFormatException e)
         {
             LOG.ignore(e);
-            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Invalid Content-Length Value");
+            throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Invalid Content-Length Value",e);
         }
     }
 
     /* ------------------------------------------------------------------------------- */
     /*
-     * Parse the message headers and return true if the handler has signaled for a return
+     * Parse the message headers and return true if the handler has signalled for a return
      */
     protected boolean parseFields(ByteBuffer buffer)
     {
@@ -1008,8 +1106,8 @@ public class HttpParser
         while ((_state==State.HEADER || _state==State.TRAILER) && buffer.hasRemaining())
         {
             // process each character
-            byte ch=next(buffer);
-            if (ch==0)
+            HttpTokens.Token t = next(buffer);
+            if (t==null)
                 break;
 
             if (_maxHeaderBytes>0 && ++_headerBytes>_maxHeaderBytes)
@@ -1024,17 +1122,17 @@ public class HttpParser
             switch (_fieldState)
             {
                 case FIELD:
-                    switch(ch)
+                    switch(t.getType())
                     {
-                        case HttpTokens.COLON:
-                        case HttpTokens.SPACE:
-                        case HttpTokens.TAB:
+                        case COLON:
+                        case SPACE:
+                        case HTAB:
                         {
-                            if (complianceViolation(RFC7230,"header folding"))
+                            if (complianceViolation(HttpComplianceSection.NO_FIELD_FOLDING,_headerString))
                                 throw new BadMessageException(HttpStatus.BAD_REQUEST_400,"Header Folding");
 
                             // header value without name - continuation?
-                            if (_valueString==null)
+                            if (_valueString==null || _valueString.isEmpty())
                             {
                                 _string.setLength(0);
                                 _length=0;
@@ -1050,7 +1148,7 @@ public class HttpParser
                             break;
                         }
 
-                        case HttpTokens.LINE_FEED:
+                        case LF:
                         {
                             // process previous header
                             if (_state==State.HEADER)
@@ -1124,12 +1222,10 @@ public class HttpParser
                             }
                         }
 
-                        default:
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
                         {
-                            // now handle the ch
-                            if (ch<HttpTokens.SPACE)
-                                throw new BadMessageException();
-
                             // process previous header
                             if (_state==State.HEADER)
                                 parsedHeader();
@@ -1140,36 +1236,39 @@ public class HttpParser
                             if (buffer.hasRemaining())
                             {
                                 // Try a look ahead for the known header name and value.
-                                HttpField field=_connectionFields==null?null:_connectionFields.getBest(buffer,-1,buffer.remaining());
-                                if (field==null)
-                                    field=CACHE.getBest(buffer,-1,buffer.remaining());
+                                HttpField cached_field=_fieldCache==null?null:_fieldCache.getBest(buffer,-1,buffer.remaining());
+                                if (cached_field==null)
+                                    cached_field=CACHE.getBest(buffer,-1,buffer.remaining());
 
-                                if (field!=null)
+                                if (cached_field!=null)
                                 {
-                                    final String n;
-                                    final String v;
+                                    String n = cached_field.getName();
+                                    String v = cached_field.getValue();
 
-                                    if (_compliance==LEGACY)
+                                    if (!_compliances.contains(HttpComplianceSection.FIELD_NAME_CASE_INSENSITIVE))
                                     {
                                         // Have to get the fields exactly from the buffer to match case
-                                        String fn=field.getName();
-                                        n=legacyString(BufferUtil.toString(buffer,buffer.position()-1,fn.length(),StandardCharsets.US_ASCII),fn);
-                                        String fv=field.getValue();
-                                        if (fv==null)
-                                            v=null;
-                                        else
+                                        String en = BufferUtil.toString(buffer,buffer.position()-1,n.length(),StandardCharsets.US_ASCII);
+                                        if (!n.equals(en))
                                         {
-                                            v=legacyString(BufferUtil.toString(buffer,buffer.position()+fn.length()+1,fv.length(),StandardCharsets.ISO_8859_1),fv);
-                                            field=new HttpField(field.getHeader(),n,v);
+                                            handleViolation(HttpComplianceSection.FIELD_NAME_CASE_INSENSITIVE,en);
+                                            n = en;
+                                            cached_field = new HttpField(cached_field.getHeader(),n,v);
                                         }
                                     }
-                                    else
+                                    
+                                    if (v!=null && !_compliances.contains(HttpComplianceSection.CASE_INSENSITIVE_FIELD_VALUE_CACHE))
                                     {
-                                        n=field.getName();
-                                        v=field.getValue();
+                                        String ev = BufferUtil.toString(buffer,buffer.position()+n.length()+1,v.length(),StandardCharsets.ISO_8859_1);
+                                        if (!v.equals(ev))
+                                        {
+                                            handleViolation(HttpComplianceSection.CASE_INSENSITIVE_FIELD_VALUE_CACHE,ev+"!="+v);
+                                            v = ev;
+                                            cached_field = new HttpField(cached_field.getHeader(),n,v);
+                                        }
                                     }
-
-                                    _header=field.getHeader();
+                                    
+                                    _header=cached_field.getHeader();
                                     _headerString=n;
 
                                     if (v==null)
@@ -1181,148 +1280,182 @@ public class HttpParser
                                         buffer.position(buffer.position()+n.length()+1);
                                         break;
                                     }
-                                    else
+
+                                    // Header and value
+                                    int pos=buffer.position()+n.length()+v.length()+1;
+                                    byte peek=buffer.get(pos);
+                                    if (peek==HttpTokens.CARRIAGE_RETURN || peek==HttpTokens.LINE_FEED)
                                     {
-                                        // Header and value
-                                        int pos=buffer.position()+n.length()+v.length()+1;
-                                        byte b=buffer.get(pos);
+                                        _field=cached_field;
+                                        _valueString=v;
+                                        setState(FieldState.IN_VALUE);
 
-                                        if (b==HttpTokens.CARRIAGE_RETURN || b==HttpTokens.LINE_FEED)
+                                        if (peek==HttpTokens.CARRIAGE_RETURN)
                                         {
-                                            _field=field;
-                                            _valueString=v;
-                                            setState(FieldState.IN_VALUE);
-
-                                            if (b==HttpTokens.CARRIAGE_RETURN)
-                                            {
-                                                _cr=true;
-                                                buffer.position(pos+1);
-                                            }
-                                            else
-                                                buffer.position(pos);
-                                            break;
+                                            _cr=true;
+                                            buffer.position(pos+1);
                                         }
                                         else
-                                        {
-                                            setState(FieldState.IN_VALUE);
-                                            setString(v);
                                             buffer.position(pos);
-                                            break;
-                                        }
+                                        break;
                                     }
+                                    setState(FieldState.IN_VALUE);
+                                    setString(v);
+                                    buffer.position(pos);
+                                    break;
                                 }
                             }
 
                             // New header
                             setState(FieldState.IN_NAME);
                             _string.setLength(0);
-                            _string.append((char)ch);
+                            _string.append(t.getChar());
                             _length=1;
-
                         }
+                        break;
+                        
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
                     break;
 
                 case IN_NAME:
-                    if (ch==HttpTokens.COLON)
+                    switch(t.getType())
                     {
-                        if (_headerString==null)
-                        {
+                        case SPACE:
+                        case HTAB:
+                            //Ignore trailing whitespaces ?
+                            if (!complianceViolation(HttpComplianceSection.NO_WS_AFTER_FIELD_NAME,null))
+                            {
+                                _headerString=takeString();
+                                _header=HttpHeader.CACHE.get(_headerString);
+                                _length=-1;
+                                setState(FieldState.WS_AFTER_NAME);
+                                break;
+                            }
+                            throw new IllegalCharacterException(_state,t,buffer);
+                            
+                        case COLON:
                             _headerString=takeString();
                             _header=HttpHeader.CACHE.get(_headerString);
-                        }
-                        _length=-1;
+                            _length=-1;
+                            setState(FieldState.VALUE);
+                            break;
+                            
+                        case LF:
+                            _headerString=takeString();
+                            _header=HttpHeader.CACHE.get(_headerString);
+                            _string.setLength(0);
+                            _valueString="";
+                            _length=-1;
 
-                        setState(FieldState.VALUE);
-                        break;
-                    }
+                            if (!complianceViolation(HttpComplianceSection.FIELD_COLON,_headerString))
+                            {                        
+                                setState(FieldState.FIELD);
+                                break;
+                            }                            
+                            throw new IllegalCharacterException(_state,t,buffer);
 
-                    if (ch>HttpTokens.SPACE)
-                    {
-                        if (_header!=null)
-                        {
-                            setString(_header.asString());
-                            _header=null;
-                            _headerString=null;
-                        }
-
-                        _string.append((char)ch);
-                        if (ch>HttpTokens.SPACE)
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                            _string.append(t.getChar());
                             _length=_string.length();
-                        break;
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-                    
-                    if (ch==HttpTokens.LINE_FEED && !complianceViolation(RFC7230,"name only header"))
+                    break;
+
+                case WS_AFTER_NAME:
+
+                    switch(t.getType())
                     {
-                        if (_headerString==null)
-                        {
-                            _headerString=takeString();
-                            _header=HttpHeader.CACHE.get(_headerString);
-                        }
-                        _value=null;
-                        _string.setLength(0);
-                        _valueString="";
-                        _length=-1;
+                        case SPACE:
+                        case HTAB:
+                            break;
 
-                        setState(FieldState.FIELD);
-                        break;
+                        case COLON:
+                            setState(FieldState.VALUE);
+                            break; 
+                            
+                        case LF:
+                            if (!complianceViolation(HttpComplianceSection.FIELD_COLON,_headerString))
+                            {                        
+                                setState(FieldState.FIELD);
+                                break;
+                            }         
+                            throw new IllegalCharacterException(_state,t,buffer);                   
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-
-                    throw new IllegalCharacterException(_state,ch,buffer);
+                    break;
 
                 case VALUE:
-                    if (ch>HttpTokens.SPACE || ch<0)
+                    switch(t.getType())
                     {
-                        _string.append((char)(0xff&ch));
-                        _length=_string.length();
-                        setState(FieldState.IN_VALUE);
-                        break;
-                    }
-
-                    if (ch==HttpTokens.SPACE || ch==HttpTokens.TAB)
-                        break;
-
-                    if (ch==HttpTokens.LINE_FEED)
-                    {
-                        _value=null;
-                        _string.setLength(0);
-                        _valueString="";
-                        _length=-1;
-
-                        setState(FieldState.FIELD);
-                        break;
-                    }
-                    throw new IllegalCharacterException(_state,ch,buffer);
-
-                case IN_VALUE:
-                    if (ch>=HttpTokens.SPACE || ch<0 || ch==HttpTokens.TAB)
-                    {
-                        if (_valueString!=null)
-                        {
-                            setString(_valueString);
-                            _valueString=null;
-                            _field=null;
-                        }
-                        _string.append((char)(0xff&ch));
-                        if (ch>HttpTokens.SPACE || ch<0)
-                            _length=_string.length();
-                        break;
-                    }
-
-                    if (ch==HttpTokens.LINE_FEED)
-                    {
-                        if (_length > 0)
-                        {
-                            _value=null;
-                            _valueString=takeString();
+                        case LF:
+                            _string.setLength(0);
+                            _valueString="";
                             _length=-1;
-                        }
-                        setState(FieldState.FIELD);
-                        break;
+
+                            setState(FieldState.FIELD);
+                            break;
+
+                        case SPACE:
+                        case HTAB:
+                            break;
+
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                        case OTEXT: // TODO review? should this be a utf8 string?
+                            _string.append(t.getChar());
+                            _length=_string.length();
+                            setState(FieldState.IN_VALUE);
+                            break;
+                            
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
+                    break;
+                    
+                case IN_VALUE:
+                    switch(t.getType())
+                    {
+                        case LF:
+                            if (_length > 0)
+                            {
+                                _valueString=takeString();
+                                _length=-1;
+                            }
+                            setState(FieldState.FIELD);
+                            break;
+                            
+                        case SPACE:
+                        case HTAB:
+                            _string.append(t.getChar());
+                            break;
 
-                    throw new IllegalCharacterException(_state,ch,buffer);
+                        case ALPHA:
+                        case DIGIT:
+                        case TCHAR:
+                        case VCHAR:
+                        case COLON:
+                        case OTEXT: // TODO review? should this be a utf8 string?
+                            _string.append(t.getChar());
+                            _length=_string.length();
+                            break;
 
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
+                    }
+                    break;
+                    
                 default:
                     throw new IllegalStateException(_state.toString());
 
@@ -1448,7 +1581,7 @@ public class HttpParser
                         if (DEBUG)
                             LOG.debug("{} EOF in {}",this,_state);
                         setState(State.CLOSED);
-                        _handler.badMessage(HttpStatus.BAD_REQUEST_400,null);
+                        _handler.badMessage(new BadMessageException(HttpStatus.BAD_REQUEST_400));
                         break;
                 }
             }
@@ -1474,7 +1607,7 @@ public class HttpParser
         if (_headerComplete)
             _handler.earlyEOF();
         else
-            _handler.badMessage(x._code, x._reason);
+            _handler.badMessage(x);
     }
 
     protected boolean parseContent(ByteBuffer buffer)
@@ -1541,53 +1674,94 @@ public class HttpParser
 
                 case CHUNKED_CONTENT:
                 {
-                    ch=next(buffer);
-                    if (ch>HttpTokens.SPACE)
+                    HttpTokens.Token t = next(buffer);
+                    if (t==null)
+                        break;
+                    switch(t.getType())
                     {
-                        _chunkLength=TypeUtil.convertHexDigit(ch);
-                        _chunkPosition=0;
-                        setState(State.CHUNK_SIZE);
+                        case LF:
+                            break;
+                            
+                        case DIGIT:
+                            _chunkLength=t.getHexDigit();
+                            _chunkPosition=0;
+                            setState(State.CHUNK_SIZE);
+                            break;
+                            
+                        case ALPHA:
+                            if (t.isHexDigit())
+                            {
+                                _chunkLength=t.getHexDigit();
+                                _chunkPosition=0;
+                                setState(State.CHUNK_SIZE);
+                                break;
+                            }
+                            throw new IllegalCharacterException(_state,t,buffer);
+                    
+                        default:
+                            throw new IllegalCharacterException(_state,t,buffer);
                     }
-
                     break;
                 }
 
                 case CHUNK_SIZE:
                 {
-                    ch=next(buffer);
-                    if (ch==0)
+                    HttpTokens.Token t = next(buffer);
+                    if (t==null)
                         break;
-                    if (ch == HttpTokens.LINE_FEED)
+                    
+                    switch(t.getType())
                     {
-                        if (_chunkLength == 0)
-                        {
-                            setState(State.TRAILER);
-                            if (_handler.contentComplete())
-                                return true;
-                        }
-                        else
-                            setState(State.CHUNK);
+                        case LF:
+                            if (_chunkLength == 0)
+                            {
+                                setState(State.TRAILER);
+                                if (_handler.contentComplete())
+                                    return true;
+                            }
+                            else
+                                setState(State.CHUNK);
+                            break;
+                            
+                        case SPACE:
+                            setState(State.CHUNK_PARAMS);
+                            break;
+                            
+                        default:
+                            if (t.isHexDigit())
+                            {
+                                if (_chunkLength>MAX_CHUNK_LENGTH)
+                                    throw new BadMessageException(HttpStatus.PAYLOAD_TOO_LARGE_413);
+                                _chunkLength=_chunkLength * 16 + t.getHexDigit();
+                            }
+                            else
+                            {
+                                setState(State.CHUNK_PARAMS);
+                            }
                     }
-                    else if (ch <= HttpTokens.SPACE || ch == HttpTokens.SEMI_COLON)
-                        setState(State.CHUNK_PARAMS);
-                    else
-                        _chunkLength=_chunkLength * 16 + TypeUtil.convertHexDigit(ch);
                     break;
                 }
 
                 case CHUNK_PARAMS:
                 {
-                    ch=next(buffer);
-                    if (ch == HttpTokens.LINE_FEED)
+                    HttpTokens.Token t = next(buffer);
+                    if (t==null)
+                        break;
+
+                    switch(t.getType())
                     {
-                        if (_chunkLength == 0)
-                        {
-                            setState(State.TRAILER);
-                            if (_handler.contentComplete())
-                                return true;
-                        }
-                        else
-                            setState(State.CHUNK);
+                        case LF:
+                            if (_chunkLength == 0)
+                            {
+                                setState(State.TRAILER);
+                                if (_handler.contentComplete())
+                                    return true;
+                            }
+                            else
+                                setState(State.CHUNK);
+                            break;
+                        default:
+                            break; // TODO review
                     }
                     break;
                 }
@@ -1634,7 +1808,6 @@ public class HttpParser
 
     /* ------------------------------------------------------------------------------- */
     public boolean isAtEOF()
-
     {
         return _eof;
     }
@@ -1672,6 +1845,7 @@ public class HttpParser
         setState(State.START);
         _endOfContent=EndOfContent.UNKNOWN_CONTENT;
         _contentLength=-1;
+        _hasContentLength=false;
         _contentPosition=0;
         _responseStatus=0;
         _contentChunk=null;
@@ -1692,31 +1866,14 @@ public class HttpParser
     protected void setState(FieldState state)
     {
         if (DEBUG)
-            LOG.debug("{}:{} --> {}",_state,_field,state);
+            LOG.debug("{}:{} --> {}",_state,_field!=null?_field:_headerString!=null?_headerString:_string,state);
         _fieldState=state;
     }
 
     /* ------------------------------------------------------------------------------- */
     public Trie<HttpField> getFieldCache()
     {
-        return _connectionFields;
-    }
-
-    /* ------------------------------------------------------------------------------- */
-    private String getProxyField(ByteBuffer buffer)
-    {
-        _string.setLength(0);
-        _length=0;
-
-        while (buffer.hasRemaining())
-        {
-            // process each character
-            byte ch=next(buffer);
-            if (ch<=' ')
-                return _string.toString();
-            _string.append((char)ch);
-        }
-        throw new BadMessageException();
+        return _fieldCache;
     }
 
     /* ------------------------------------------------------------------------------- */
@@ -1770,10 +1927,20 @@ public class HttpParser
 
         /* ------------------------------------------------------------ */
         /** Called to signal that a bad HTTP message has been received.
-         * @param status The bad status to send
-         * @param reason The textual reason for badness
+         * @param failure the failure with the bad message information
          */
-        public void badMessage(int status, String reason);
+        public default void badMessage(BadMessageException failure)
+        {
+            badMessage(failure.getCode(), failure.getReason());
+        }
+
+        /**
+         * @deprecated use {@link #badMessage(BadMessageException)} instead
+         */
+        @Deprecated
+        public default void badMessage(int status, String reason)
+        {
+        }
 
         /* ------------------------------------------------------------ */
         /** @return the size in bytes of the per parser header cache
@@ -1817,18 +1984,24 @@ public class HttpParser
     /* ------------------------------------------------------------------------------- */
     public interface ComplianceHandler extends HttpHandler
     {
-        public void onComplianceViolation(HttpCompliance compliance,HttpCompliance required,String reason);
+        @Deprecated
+        public default void onComplianceViolation(HttpCompliance compliance, HttpCompliance required, String reason) {}
+        
+        public default void onComplianceViolation(HttpCompliance compliance, HttpComplianceSection violation, String details)
+        {
+            onComplianceViolation(compliance,HttpCompliance.requiredCompliance(violation), details);
+        }
     }
 
     /* ------------------------------------------------------------------------------- */
     @SuppressWarnings("serial")
     private static class IllegalCharacterException extends BadMessageException
     {
-        private IllegalCharacterException(State state,byte ch,ByteBuffer buffer)
+        private IllegalCharacterException(State state,HttpTokens.Token token,ByteBuffer buffer)
         {
-            super(400,String.format("Illegal character 0x%X",ch));
-            // Bug #460642 - don't reveal buffers to end user
-            LOG.warn(String.format("Illegal character 0x%X in state=%s for buffer %s",ch,state,BufferUtil.toDetailString(buffer)));
+            super(400,String.format("Illegal character %s",token));
+            if (LOG.isDebugEnabled())
+                LOG.debug(String.format("Illegal character %s in state=%s for buffer %s",token,state,BufferUtil.toDetailString(buffer)));
         }
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -45,6 +45,13 @@ public class MessageInputStream extends InputStream implements MessageAppender
     private final long timeoutMs;
     private ByteBuffer activeBuffer = null;
 
+    private static boolean isTheEofBuffer(ByteBuffer buf)
+    {
+        @SuppressWarnings("ReferenceEquality")
+        boolean isTheEofBuffer = (buf==EOF);
+        return isTheEofBuffer;
+    }
+    
     public MessageInputStream()
     {
         this(-1);
@@ -166,7 +173,7 @@ public class MessageInputStream extends InputStream implements MessageAppender
                     }
                 }
 
-                if (activeBuffer == EOF)
+                if (isTheEofBuffer(activeBuffer))
                 {
                     if (LOG.isDebugEnabled())
                         LOG.debug("Reached EOF");

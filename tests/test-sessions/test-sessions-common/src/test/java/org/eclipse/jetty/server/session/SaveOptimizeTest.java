@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,14 +19,18 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
 
 import java.io.IOException;
-
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -35,13 +39,12 @@ import javax.servlet.http.HttpSession;
 
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
-import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.StacklessLogging;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 
@@ -52,11 +55,8 @@ import org.junit.Test;
  */
 public class SaveOptimizeTest
 {
-
     protected TestServlet _servlet;
     protected TestServer _server1 = null;
-    
-  
     
     
     /**
@@ -148,31 +148,27 @@ public class SaveOptimizeTest
                 ContentResponse response = client.GET(url);
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
-                assertTrue(sessionCookie != null);
+                assertNotNull(sessionCookie);
                 String sessionId = TestServer.extractSessionId(sessionCookie);
 
 
                 SessionData data = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
                 assertNotNull(data);
-                long firstSaved = data.getLastSaved();
 
                 //make a few requests to access the session but not change it
+                int initialNumSaves = getNumSaves();
                 for (int i=0;i<5; i++)
                 {
-                    sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
-
                     // Perform a request to contextB with the same session cookie
-                    Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop");
-                    request.header("Cookie", sessionCookie);
-                    response = request.send();
+                    client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop").send();
 
                     //check session is unchanged
                     SessionData d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
                     assertNotNull(d);
-                    assertEquals(firstSaved, d.getLastSaved());
+                    assertThat(getNumSaves(), equalTo(initialNumSaves));
 
                     //slight pause between requests
-                    Thread.currentThread().sleep(500);
+                    Thread.sleep(500);
                 }
             }
             finally
@@ -227,35 +223,29 @@ public class SaveOptimizeTest
                 ContentResponse response = client.GET(url);
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
-                assertTrue(sessionCookie != null);
+                assertNotNull(sessionCookie);
                 String sessionId = TestServer.extractSessionId(sessionCookie);
 
-
                 SessionData data = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
-                assertNotNull(data);           
-                long lastSaved = data.getLastSaved();
-
+                assertNotNull(data);
 
                 // Perform a request to do nothing with the same session cookie
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
-                Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                int numSavesBefore = getNumSaves();
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop").send();
 
                 //check session not saved
                 SessionData d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
                 assertNotNull(d);
-                assertEquals(lastSaved, d.getLastSaved());
+                assertThat(getNumSaves(), equalTo(numSavesBefore));
 
                 // Perform a request to mutate the session
-                request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=mutate");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                numSavesBefore = getNumSaves();
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=mutate").send();
 
                 //check session is saved
                 d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
                 assertNotNull(d);
-                assertTrue(d.getLastSaved() > lastSaved);
+                assertThat(getNumSaves(), greaterThan(numSavesBefore));
             }
             finally
             {
@@ -307,7 +297,7 @@ public class SaveOptimizeTest
                 ContentResponse response = client.GET(url);
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
-                assertTrue(sessionCookie != null);
+                assertNotNull(sessionCookie);
                 String sessionId = TestServer.extractSessionId(sessionCookie);
 
 
@@ -316,12 +306,9 @@ public class SaveOptimizeTest
                 long lastSaved = data.getLastSaved();
 
                 //make another request, session should not change
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
 
                 // Perform a request to do nothing with the same session cookie
-                Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop").send();
 
                 //check session not saved
                 SessionData d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
@@ -329,12 +316,10 @@ public class SaveOptimizeTest
                 assertEquals(lastSaved, d.getLastSaved());
 
                 //wait for the savePeriod to pass and then make another request, this should save the session
-                Thread.currentThread().sleep(1000*savePeriod);
+                Thread.sleep(1000*savePeriod);
 
                 // Perform a request to do nothing with the same session cookie
-                request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop").send();
 
                 //check session is saved
                 d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
@@ -393,7 +378,7 @@ public class SaveOptimizeTest
                 ContentResponse response = client.GET(url);
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
-                assertTrue(sessionCookie != null);
+                assertNotNull(sessionCookie);
                 String sessionId = TestServer.extractSessionId(sessionCookie);
 
                 SessionData data = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
@@ -401,13 +386,8 @@ public class SaveOptimizeTest
                 long lastSaved = data.getLastSaved();
                 assertTrue(lastSaved > 0); //check session created was saved
 
-
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
-
                 // Perform a request to do nothing with the same session cookie, check the session object is different
-                Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop&check=diff");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=noop&check=diff").send();
 
                 //check session not saved
                 SessionData d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
@@ -451,6 +431,8 @@ public class SaveOptimizeTest
         _servlet = new TestServlet();
         ServletHolder holder = new ServletHolder(_servlet);
         ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
         _servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
         _server1.start();
@@ -465,29 +447,35 @@ public class SaveOptimizeTest
                 String url = "http://localhost:" + port1 + contextPath + servletMapping+"?action=create&check=true";
 
                 //make a request to set up a session on the server
+                int numSavesBefore = getNumSaves();
+                CountDownLatch latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
                 ContentResponse response = client.GET(url);
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
-                assertTrue(sessionCookie != null);
+                assertNotNull(sessionCookie);
                 String sessionId = TestServer.extractSessionId(sessionCookie);
 
-                SessionData data = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
-                assertNotNull(data);           
-                long lastSaved = data.getLastSaved();
-                assertTrue(lastSaved > 0); //check session created was saved
+                //ensure request fully finished processing
+                assertTrue(latch.await(5, TimeUnit.SECONDS));
 
-
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
+                //check the SessionData has been saved since before the request
+                assertThat(getNumSaves(), greaterThan(numSavesBefore));
 
                 // Perform a request to change maxInactive on session
-                Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=max&value=60");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
+                numSavesBefore = getNumSaves();
+                latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
+                client.newRequest("http://localhost:" + port1 + contextPath + servletMapping+"?action=max&value=60").send();
+
+                //ensure request fully finished processing
+                assertTrue(latch.await(5, TimeUnit.SECONDS));
+
 
                 //check session is saved, even though the save optimisation interval has not passed
+                assertThat(getNumSaves(), greaterThan(numSavesBefore));
                 SessionData d = contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().load(sessionId);
                 assertNotNull(d);
-                assertTrue(d.getLastSaved() > lastSaved);
                 assertEquals(60000, d.getMaxInactiveMs());
             }
             finally
@@ -504,6 +492,7 @@ public class SaveOptimizeTest
 
     public static class TestServlet extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
         public String _id = null;
         public SessionDataStore _store;
         public HttpSession _firstSession = null;
@@ -524,7 +513,7 @@ public class SaveOptimizeTest
                 HttpSession session = request.getSession(true);
                 _firstSession = session;
                 _id = session.getId();
-                session.setAttribute("value", new Integer(1));
+                session.setAttribute("value", 1);
 
                 String check = request.getParameter("check");
                 if (!StringUtil.isBlank(check) && _store != null)
@@ -549,7 +538,7 @@ public class SaveOptimizeTest
             {
                 HttpSession session = request.getSession(false);
                 assertNotNull(session);
-                session.setAttribute("ttt", new Long(System.currentTimeMillis()));
+                session.setAttribute("ttt", TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
             }
             else if ("max".equalsIgnoreCase(action))
             {
@@ -576,5 +565,13 @@ public class SaveOptimizeTest
             }
         }
     }
-    
+
+    private int getNumSaves()
+    {
+        assertNotNull(_servlet);
+        assertNotNull(_servlet._store);
+        assertTrue(TestSessionDataStore.class.isInstance(_servlet._store));
+        return ((TestSessionDataStore)_servlet._store)._numSaves.get();
+    }
+
 }

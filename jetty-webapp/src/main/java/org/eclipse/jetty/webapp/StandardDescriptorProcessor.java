@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -112,6 +112,7 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
     /**
      * {@inheritDoc}
      */
+    @Override
     public void start(WebAppContext context, Descriptor descriptor)
     {
         for (FilterHolder h : context.getServletHandler().getFilters())
@@ -134,6 +135,7 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
     /**
      * {@inheritDoc}
      */
+    @Override
     public void end(WebAppContext context, Descriptor descriptor)
     {
         context.getServletHandler().setFilters(_filterHolders.toArray(new FilterHolder[_filterHolderMap.size()]));
@@ -474,7 +476,7 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
         String async=node.getString("async-supported",false,true);
         if (async!=null)
         {
-            boolean val = async.length()==0||Boolean.valueOf(async);
+            boolean val = async.length()==0||Boolean.parseBoolean(async);
             switch (context.getMetaData().getOrigin(name+".servlet.async-supported"))
             {
                 case NotSet:
@@ -511,7 +513,7 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
         String enabled = node.getString("enabled", false, true);
         if (enabled!=null)
         {
-            boolean is_enabled = enabled.length()==0||Boolean.valueOf(enabled);
+            boolean is_enabled = enabled.length()==0||Boolean.parseBoolean(enabled);
             switch (context.getMetaData().getOrigin(name+".servlet.enabled"))
             {
                 case NotSet:
@@ -648,6 +650,9 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
 
     public void visitSessionConfig(WebAppContext context, Descriptor descriptor, XmlParser.Node node)
     {
+        if (context.getSessionHandler() == null)
+            return; //no session handler, ignore session setup
+        
         XmlParser.Node tNode = node.get("session-timeout");
         if (tNode != null)
         { 
@@ -1114,7 +1119,7 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
                 error = ErrorPageErrorHandler.GLOBAL_ERROR_PAGE;
         }
         else
-            code=Integer.valueOf(error);
+            code=Integer.parseInt(error);
 
         String location = node.getString("location", false, true);
         if (!location.startsWith("/"))
@@ -1426,6 +1431,12 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
 
     public void visitSecurityConstraint(WebAppContext context, Descriptor descriptor, XmlParser.Node node)
     {
+        if (context.getSecurityHandler() == null)
+        {
+            LOG.warn("security-constraint declared but SecurityHandler==null");
+            return;
+        }
+
         Constraint scBase = new Constraint();
 
         //ServletSpec 3.0, p74 security-constraints, as minOccurs > 1, are additive
@@ -1699,6 +1710,11 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
 
     public void visitSecurityRole(WebAppContext context, Descriptor descriptor, XmlParser.Node node)
     {
+        if (context.getSecurityHandler() == null)
+        {
+            LOG.warn("security-role declared but SecurityHandler==null");
+            return;
+        }
         //ServletSpec 3.0, p74 elements with multiplicity >1 are additive when merged
         XmlParser.Node roleNode = node.get("role-name");
         String role = roleNode.toString(false, true);
@@ -1798,10 +1814,10 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
 
         String async=node.getString("async-supported",false,true);
         if (async!=null)
-            holder.setAsyncSupported(async.length()==0||Boolean.valueOf(async));
+            holder.setAsyncSupported(async.length()==0||Boolean.parseBoolean(async));
         if (async!=null)
         {
-            boolean val = async.length()==0||Boolean.valueOf(async);
+            boolean val = async.length()==0||Boolean.parseBoolean(async);
             switch (context.getMetaData().getOrigin(name+".filter.async-supported"))
             {
                 case NotSet:
@@ -1884,28 +1900,18 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
             {
                 //Servlet Spec 3.0 p 74
                 //Duplicate listener declarations don't result in duplicate listener instances
-                EventListener[] listeners=context.getEventListeners();
-                if (listeners!=null)
+                for (ListenerHolder holder : context.getServletHandler().getListeners())
                 {
-                    for (EventListener l : listeners)
-                    {
-                        if (l.getClass().getName().equals(className))
-                            return;
-                    }
+                    if (holder.getClassName().equals(className))
+                        return;
                 }
 
                 ((WebDescriptor)descriptor).addClassName(className);
-
-                Class<? extends EventListener> listenerClass = (Class<? extends EventListener>)context.loadClass(className);
-                listener = newListenerInstance(context,listenerClass, descriptor);
-                if (!(listener instanceof EventListener))
-                {
-                    LOG.warn("Not an EventListener: " + listener);
-                    return;
-                }
-                context.addEventListener(listener);
+                
+                ListenerHolder h = context.getServletHandler().newListenerHolder(new Source (Source.Origin.DESCRIPTOR, descriptor.getResource().toString()));
+                h.setClassName(className);
+                context.getServletHandler().addListener(h);
                 context.getMetaData().setOrigin(className+".listener", descriptor);
-
             }
         }
         catch (Exception e)
@@ -1936,16 +1942,12 @@ public class StandardDescriptorProcessor extends IterativeDescriptorProcessor
      */
     public void visitDenyUncoveredHttpMethods(WebAppContext context, Descriptor descriptor, XmlParser.Node node)
     {
+        if (context.getSecurityHandler() == null)
+        {
+            LOG.warn("deny-uncovered-http-methods declared but SecurityHandler==null");
+            return;
+        }
+
         ((ConstraintAware)context.getSecurityHandler()).setDenyUncoveredHttpMethods(true);
-    }
-
-    public EventListener newListenerInstance(WebAppContext context,Class<? extends EventListener> clazz, Descriptor descriptor) throws Exception
-    {
-        ListenerHolder h = context.getServletHandler().newListenerHolder(new Source (Source.Origin.DESCRIPTOR, descriptor.getResource().toString()));
-        EventListener l = context.getServletContext().createInstance(clazz);
-        h.setListener(l);
-        context.getServletHandler().addListener(h);
-        return l;
-
     }
 }

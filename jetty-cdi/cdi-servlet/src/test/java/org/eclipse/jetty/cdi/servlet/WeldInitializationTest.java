@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,7 +20,7 @@ package org.eclipse.jetty.cdi.servlet;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.File;
 import java.io.InputStream;
@@ -29,15 +29,16 @@ import java.net.URI;
 
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.log.JettyLogHandler;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.resource.Resource;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class WeldInitializationTest
 {
@@ -45,7 +46,7 @@ public class WeldInitializationTest
     private static Server server;
     private static URI serverHttpURI;
 
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         JettyLogHandler.config();
@@ -55,7 +56,7 @@ public class WeldInitializationTest
         connector.setPort(0);
         server.addConnector(connector);
 
-        EmbeddedCdiHandler context = new EmbeddedCdiHandler();
+        EmbeddedCdiHandler context = new EmbeddedCdiHandler(ServletContextHandler.SESSIONS);
 
         File baseDir = MavenTestingUtils.getTestResourcesDir();
 
@@ -78,7 +79,7 @@ public class WeldInitializationTest
         serverHttpURI = new URI(String.format("http://%s:%d/",host,port));
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         try

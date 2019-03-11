@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,7 @@
 package org.eclipse.jetty.security.jaspi;
 
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -43,9 +43,9 @@ import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Credential;
 import org.eclipse.jetty.util.security.Password;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class JaspiTest
 {
@@ -89,7 +89,7 @@ public class JaspiTest
         }
     }
     
-    @Before
+    @BeforeEach
     public void before() throws Exception
     {
         System.setProperty("org.apache.geronimo.jaspic.configurationFile","src/test/resources/jaspi.xml");
@@ -138,7 +138,7 @@ public class JaspiTest
         _server.start();
     }
     
-    @After
+    @AfterEach
     public void after() throws Exception
     {
         _server.stop();
@@ -147,14 +147,14 @@ public class JaspiTest
     @Test
     public void testNoConstraint() throws Exception
     {
-        String response = _connector.getResponses("GET /ctx/test HTTP/1.0\n\n");
+        String response = _connector.getResponse("GET /ctx/test HTTP/1.0\n\n");
         assertThat(response,startsWith("HTTP/1.1 200 OK"));
     }
     
     @Test
     public void testConstraintNoAuth() throws Exception
     {
-        String response = _connector.getResponses("GET /ctx/jaspi/test HTTP/1.0\n\n");
+        String response = _connector.getResponse("GET /ctx/jaspi/test HTTP/1.0\n\n");
         assertThat(response,startsWith("HTTP/1.1 401 Unauthorized"));
         assertThat(response,Matchers.containsString("WWW-Authenticate: basic realm=\"TestRealm\""));
     }
@@ -162,7 +162,7 @@ public class JaspiTest
     @Test
     public void testConstraintWrongAuth() throws Exception
     {
-        String response = _connector.getResponses("GET /ctx/jaspi/test HTTP/1.0\n"+
+        String response = _connector.getResponse("GET /ctx/jaspi/test HTTP/1.0\n"+
                                                   "Authorization: Basic " + B64Code.encode("user:wrong") + "\n\n");
         assertThat(response,startsWith("HTTP/1.1 401 Unauthorized"));
         assertThat(response,Matchers.containsString("WWW-Authenticate: basic realm=\"TestRealm\""));
@@ -171,7 +171,7 @@ public class JaspiTest
     @Test
     public void testConstraintAuth() throws Exception
     {
-        String response = _connector.getResponses("GET /ctx/jaspi/test HTTP/1.0\n"+
+        String response = _connector.getResponse("GET /ctx/jaspi/test HTTP/1.0\n"+
                                                   "Authorization: Basic " + B64Code.encode("user:password") + "\n\n");
         assertThat(response,startsWith("HTTP/1.1 200 OK"));
     }
@@ -179,14 +179,14 @@ public class JaspiTest
     @Test
     public void testOtherNoAuth() throws Exception
     {
-        String response = _connector.getResponses("GET /other/test HTTP/1.0\n\n");
+        String response = _connector.getResponse("GET /other/test HTTP/1.0\n\n");
         assertThat(response,startsWith("HTTP/1.1 403 Forbidden"));
     }
     
     @Test
     public void testOtherAuth() throws Exception
     {
-        String response = _connector.getResponses("GET /other/test HTTP/1.0\n"+
+        String response = _connector.getResponse("GET /other/test HTTP/1.0\n"+
                                                   "X-Forwarded-User: user\n\n");
         assertThat(response,startsWith("HTTP/1.1 200 OK"));
     }

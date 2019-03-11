@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,11 @@
 //
 
 package org.eclipse.jetty.servlets;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -39,17 +44,17 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.webapp.WebAppContext;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ConcatServletTest
 {
     private Server server;
     private LocalConnector connector;
 
-    @Before
+    @BeforeEach
     public void prepareServer() throws Exception
     {
         server = new Server();
@@ -57,7 +62,7 @@ public class ConcatServletTest
         server.addConnector(connector);
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         if (server != null)
@@ -92,20 +97,19 @@ public class ConcatServletTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
+        String response = connector.getResponse(request);
         try (BufferedReader reader = new BufferedReader(new StringReader(response)))
         {
             while (true)
             {
                 String line = reader.readLine();
-                if (line == null)
-                    Assert.fail();
+                assertNotNull(line, "Line cannot be null");
                 if (line.trim().isEmpty())
                     break;
             }
-            Assert.assertEquals(resource1, reader.readLine());
-            Assert.assertEquals(resource2, reader.readLine());
-            Assert.assertNull(reader.readLine());
+            assertEquals(resource1, reader.readLine());
+            assertEquals(resource2, reader.readLine());
+            assertNull(reader.readLine());
         }
     }
 
@@ -130,7 +134,7 @@ public class ConcatServletTest
         server.start();
 
         // Verify that I can get the file programmatically, as required by the spec.
-        Assert.assertNotNull(context.getServletContext().getResource("/WEB-INF/one.js"));
+        assertNotNull(context.getServletContext().getResource("/WEB-INF/one.js"));
 
         // Having a path segment and then ".." triggers a special case
         // that the ConcatServlet must detect and avoid.
@@ -140,8 +144,8 @@ public class ConcatServletTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+        String response = connector.getResponse(request);
+        assertTrue(response.startsWith("HTTP/1.1 404 "));
 
         // Make sure ConcatServlet behaves well if it's case insensitive.
         uri = contextPath + concatPath + "?/trick/../web-inf/one.js";
@@ -150,8 +154,8 @@ public class ConcatServletTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+        response = connector.getResponse(request);
+        assertTrue(response.startsWith("HTTP/1.1 404 "));
 
         // Make sure ConcatServlet behaves well if encoded.
         uri = contextPath + concatPath + "?/trick/..%2FWEB-INF%2Fone.js";
@@ -160,8 +164,8 @@ public class ConcatServletTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+        response = connector.getResponse(request);
+        assertTrue(response.startsWith("HTTP/1.1 404 "));
 
         // Make sure ConcatServlet cannot see file system files.
         uri = contextPath + concatPath + "?/trick/../../" + directoryFile.getName();
@@ -170,7 +174,7 @@ public class ConcatServletTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        response = connector.getResponses(request);
-        Assert.assertTrue(response.startsWith("HTTP/1.1 404 "));
+        response = connector.getResponse(request);
+        assertTrue(response.startsWith("HTTP/1.1 404 "));
     }
 }

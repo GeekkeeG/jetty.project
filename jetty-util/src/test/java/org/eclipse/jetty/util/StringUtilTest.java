@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,22 +19,24 @@
 package org.eclipse.jetty.util;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.emptyArray;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class StringUtilTest
 {
     @Test
+    @SuppressWarnings("ReferenceEquality")
     public void testAsciiToLowerCase()
     {
         String lc="\u0690bc def 1\u06903";
@@ -87,6 +89,7 @@ public class StringUtilTest
     }
 
     @Test
+    @SuppressWarnings("ReferenceEquality")
     public void testReplace()
     {
         String s="\u0690bc \u0690bc \u0690bc";
@@ -99,6 +102,7 @@ public class StringUtilTest
     }
 
     @Test
+    @SuppressWarnings("ReferenceEquality")
     public void testUnquote()
     {
         String uq =" not quoted ";
@@ -111,9 +115,10 @@ public class StringUtilTest
 
 
     @Test
+    @SuppressWarnings("ReferenceEquality")
     public void testNonNull()
     {
-        String nn="";
+        String nn="non empty string";
         assertTrue(nn==StringUtil.nonNull(nn));
         assertEquals("",StringUtil.nonNull(null));
     }
@@ -143,6 +148,7 @@ public class StringUtilTest
     }
 
     @Test
+    @Deprecated
     public void testSidConversion() throws Exception
     {
         String sid4 = "S-1-4-21-3623811015-3361044348-30300820";
@@ -155,10 +161,10 @@ public class StringUtilTest
         byte[] sid6Bytes = StringUtil.sidStringToBytes(sid6);
         byte[] sid12Bytes = StringUtil.sidStringToBytes(sid12);
 
-        Assert.assertEquals(sid4, StringUtil.sidBytesToString(sid4Bytes));
-        Assert.assertEquals(sid5, StringUtil.sidBytesToString(sid5Bytes));
-        Assert.assertEquals(sid6, StringUtil.sidBytesToString(sid6Bytes));
-        Assert.assertEquals(sid12, StringUtil.sidBytesToString(sid12Bytes));
+        assertEquals(sid4, StringUtil.sidBytesToString(sid4Bytes));
+        assertEquals(sid5, StringUtil.sidBytesToString(sid5Bytes));
+        assertEquals(sid6, StringUtil.sidBytesToString(sid6Bytes));
+        assertEquals(sid12, StringUtil.sidBytesToString(sid12Bytes));
 
     }
 
@@ -174,31 +180,31 @@ public class StringUtilTest
         Utf8StringBuffer strbuf = new Utf8StringBuffer(bytes.length);
         for (int i=0;i<10;i++)
         {
-            long s1=System.currentTimeMillis();
+            long s1=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             for (int j=1000000; j-->0;)
             {
                 calc+=new String(bytes,0,bytes.length,StandardCharsets.UTF_8).hashCode();
             }
-            long s2=System.currentTimeMillis();
+            long s2=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             for (int j=1000000; j-->0;)
             {
                 calc+=StringUtil.toUTF8String(bytes,0,bytes.length).hashCode();
             }
-            long s3=System.currentTimeMillis();
+            long s3=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             for (int j=1000000; j-->0;)
             {
                 Utf8StringBuffer buffer = new Utf8StringBuffer(bytes.length);
                 buffer.append(bytes,0,bytes.length);
                 calc+=buffer.toString().hashCode();
             }
-            long s4=System.currentTimeMillis();
+            long s4=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
             for (int j=1000000; j-->0;)
             {
                 strbuf.reset();
                 strbuf.append(bytes,0,bytes.length);
                 calc+=strbuf.toString().hashCode();
             }
-            long s5=System.currentTimeMillis();
+            long s5=TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
 
             System.err.println((s2-s1)+", "+(s3-s2)+", "+(s4-s3)+", "+(s5-s4));
         }
@@ -227,33 +233,33 @@ public class StringUtilTest
     @Test
     public void testIsBlank() 
     {
-        Assert.assertTrue(StringUtil.isBlank(null));
-        Assert.assertTrue(StringUtil.isBlank(""));
-        Assert.assertTrue(StringUtil.isBlank("\r\n"));
-        Assert.assertTrue(StringUtil.isBlank("\t"));
-        Assert.assertTrue(StringUtil.isBlank("   "));
+        assertTrue(StringUtil.isBlank(null));
+        assertTrue(StringUtil.isBlank(""));
+        assertTrue(StringUtil.isBlank("\r\n"));
+        assertTrue(StringUtil.isBlank("\t"));
+        assertTrue(StringUtil.isBlank("   "));
 
-        Assert.assertFalse(StringUtil.isBlank("a"));
-        Assert.assertFalse(StringUtil.isBlank("  a"));
-        Assert.assertFalse(StringUtil.isBlank("a  "));
-        Assert.assertFalse(StringUtil.isBlank("."));
-        Assert.assertFalse(StringUtil.isBlank(";\n"));
+        assertFalse(StringUtil.isBlank("a"));
+        assertFalse(StringUtil.isBlank("  a"));
+        assertFalse(StringUtil.isBlank("a  "));
+        assertFalse(StringUtil.isBlank("."));
+        assertFalse(StringUtil.isBlank(";\n"));
     }
 
     @Test
     public void testIsNotBlank() 
     {
-        Assert.assertFalse(StringUtil.isNotBlank(null));
-        Assert.assertFalse(StringUtil.isNotBlank(""));
-        Assert.assertFalse(StringUtil.isNotBlank("\r\n"));
-        Assert.assertFalse(StringUtil.isNotBlank("\t"));
-        Assert.assertFalse(StringUtil.isNotBlank("   "));
+        assertFalse(StringUtil.isNotBlank(null));
+        assertFalse(StringUtil.isNotBlank(""));
+        assertFalse(StringUtil.isNotBlank("\r\n"));
+        assertFalse(StringUtil.isNotBlank("\t"));
+        assertFalse(StringUtil.isNotBlank("   "));
 
-        Assert.assertTrue(StringUtil.isNotBlank("a"));
-        Assert.assertTrue(StringUtil.isNotBlank("  a"));
-        Assert.assertTrue(StringUtil.isNotBlank("a  "));
-        Assert.assertTrue(StringUtil.isNotBlank("."));
-        Assert.assertTrue(StringUtil.isNotBlank(";\n"));
+        assertTrue(StringUtil.isNotBlank("a"));
+        assertTrue(StringUtil.isNotBlank("  a"));
+        assertTrue(StringUtil.isNotBlank("a  "));
+        assertTrue(StringUtil.isNotBlank("."));
+        assertTrue(StringUtil.isNotBlank(";\n"));
     }
     
     @Test

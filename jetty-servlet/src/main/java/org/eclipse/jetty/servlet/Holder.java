@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -32,6 +32,7 @@ import javax.servlet.ServletContext;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
@@ -45,7 +46,7 @@ import org.eclipse.jetty.util.log.Logger;
  * @param <T> the type of holder
  */
 @ManagedObject("Holder - a container for servlets and the like")
-public class Holder<T> extends BaseHolder<T>
+public abstract class Holder<T> extends BaseHolder<T>
 {
     private static final Logger LOG = Log.getLogger(Holder.class);
 
@@ -121,6 +122,7 @@ public class Holder<T> extends BaseHolder<T>
     /**
      * @param className The className to set.
      */
+    @Override
     public void setClassName(String className)
     {
         super.setClassName(className);
@@ -132,6 +134,7 @@ public class Holder<T> extends BaseHolder<T>
     /**
      * @param held The class to hold
      */
+    @Override
     public void setHeldClass(Class<? extends T> held)
     {
         super.setHeldClass(held);
@@ -186,15 +189,6 @@ public class Holder<T> extends BaseHolder<T>
         return _asyncSupported;
     }
 
-
-    /* ------------------------------------------------------------ */
-    @Override
-    public void dump(Appendable out, String indent) throws IOException
-    {
-        super.dump(out,indent);
-        ContainerLifeCycle.dump(out,indent,_initParams.entrySet());
-    }
-
     /* ------------------------------------------------------------ */
     @Override
     public String dump()
@@ -239,6 +233,7 @@ public class Holder<T> extends BaseHolder<T>
     /* -------------------------------------------------------- */
     protected class HolderRegistration implements Registration.Dynamic
     {
+        @Override
         public void setAsyncSupported(boolean isAsyncSupported)
         {
             illegalStateIfContextStarted();
@@ -251,26 +246,31 @@ public class Holder<T> extends BaseHolder<T>
                 LOG.debug(this+" is "+description);
         }
 
+        @Override
         public String getClassName()
         {
             return Holder.this.getClassName();
         }
 
+        @Override
         public String getInitParameter(String name)
         {
             return Holder.this.getInitParameter(name);
         }
 
+        @Override
         public Map<String, String> getInitParameters()
         {
             return Holder.this.getInitParameters();
         }
 
+        @Override
         public String getName()
         {
             return Holder.this.getName();
         }
 
+        @Override
         public boolean setInitParameter(String name, String value)
         {
             illegalStateIfContextStarted();
@@ -286,6 +286,7 @@ public class Holder<T> extends BaseHolder<T>
             return true;
         }
 
+        @Override
         public Set<String> setInitParameters(Map<String, String> initParameters)
         {
             illegalStateIfContextStarted();

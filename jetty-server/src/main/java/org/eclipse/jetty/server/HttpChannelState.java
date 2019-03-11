@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,11 @@
 //
 
 package org.eclipse.jetty.server;
+
+import static javax.servlet.RequestDispatcher.ERROR_EXCEPTION;
+import static javax.servlet.RequestDispatcher.ERROR_EXCEPTION_TYPE;
+import static javax.servlet.RequestDispatcher.ERROR_MESSAGE;
+import static javax.servlet.RequestDispatcher.ERROR_STATUS_CODE;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,10 +42,6 @@ import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.Locker;
 import org.eclipse.jetty.util.thread.Scheduler;
-
-import static javax.servlet.RequestDispatcher.ERROR_EXCEPTION;
-import static javax.servlet.RequestDispatcher.ERROR_MESSAGE;
-import static javax.servlet.RequestDispatcher.ERROR_STATUS_CODE;
 
 /**
  * Implementation of AsyncContext interface that holds the state of request-response cycle.
@@ -73,6 +74,7 @@ public class HttpChannelState
      */
     public enum Action
     {
+        NOOP,             // No action 
         DISPATCH,         // handle a normal request dispatch
         ASYNC_DISPATCH,   // handle an async request dispatch
         ERROR_DISPATCH,   // handle a normal error
@@ -144,6 +146,25 @@ public class HttpChannelState
             if (_asyncListeners==null)
                 _asyncListeners=new ArrayList<>();
             _asyncListeners.add(listener);
+        }
+    }
+
+    public boolean hasListener(AsyncListener listener)
+    {
+        try(Locker.Lock lock= _locker.lock())
+        {
+            if (_asyncListeners==null)
+                return false;
+            for (AsyncListener l : _asyncListeners)
+            {
+                if (l==listener)
+                    return true;
+
+                if (l instanceof AsyncContextState.WrappedAsyncListener && ((AsyncContextState.WrappedAsyncListener)l).getListener()==listener)
+                    return true;
+            }
+
+            return false;
         }
     }
 
@@ -240,10 +261,11 @@ public class HttpChannelState
                             return Action.READ_CALLBACK;
                         case REGISTER:
                         case PRODUCING:
-                            throw new IllegalStateException(toStringLocked());
                         case IDLE:
                         case REGISTERED:
                             break;
+                        default:
+                            throw new IllegalStateException(getStatusStringLocked());
                     }
 
                     if (_asyncWritePossible)
@@ -268,16 +290,15 @@ public class HttpChannelState
                             _async=Async.NOT_ASYNC;
                             return Action.ERROR_DISPATCH;
                         case STARTED:
-                            case EXPIRING:
+                        case EXPIRING:
                         case ERRORING:
-                            return Action.WAIT;
+                            _state=State.ASYNC_WAIT;
+                            return Action.NOOP;
                         case NOT_ASYNC:
-                            break;
                         default:
                             throw new IllegalStateException(getStatusStringLocked());
                     }
 
-                    return Action.WAIT;
 
                 case ASYNC_ERROR:
                     return Action.ASYNC_ERROR;
@@ -382,7 +403,7 @@ public class HttpChannelState
 
     /**
      * Signal that the HttpConnection has finished handling the request.
-     * For blocking connectors,this call may block if the request has
+     * For blocking connectors, this call may block if the request has
      * been suspended (startAsync called).
      * @return next actions
      * be handled again (eg because of a resume that happened before unhandle was called)
@@ -409,6 +430,7 @@ public class HttpChannelState
                 case DISPATCHED:
                 case ASYNC_IO:
                 case ASYNC_ERROR:
+                case ASYNC_WAIT:
                     break;
 
                 default:
@@ -498,7 +520,7 @@ public class HttpChannelState
         finally
         {
             if (read_interested)
-                _channel.asyncReadFillInterested();
+                _channel.onAsyncWaitForContent();
         }
     }
 
@@ -591,10 +613,11 @@ public class HttpChannelState
                         {
                             LOG.warn(x+" while invoking onTimeout listener " + listener);
                             LOG.debug(x);
-                            if (error.get()==null)
+                            Throwable failure = error.get();
+                            if (failure == null)
                                 error.set(x);
-                            else
-                                error.get().addSuppressed(x);
+                            else if (x != failure)
+                                failure.addSuppressed(x);
                         }
                     }
                 }
@@ -710,7 +733,7 @@ public class HttpChannelState
         cancelTimeout();
     }
     
-    protected void onError(Throwable failure)
+    protected void onError(Throwable th)
     {
         final List<AsyncListener> listeners;
         final AsyncContextEvent event;
@@ -718,15 +741,16 @@ public class HttpChannelState
         
         int code=HttpStatus.INTERNAL_SERVER_ERROR_500;
         String reason=null;
-        if (failure instanceof BadMessageException)
+        Throwable cause = _channel.unwrap(th,BadMessageException.class,UnavailableException.class);
+        if (cause instanceof BadMessageException)
         {
-            BadMessageException bme = (BadMessageException)failure;
+            BadMessageException bme = (BadMessageException)cause;
             code = bme.getCode();
             reason = bme.getReason();
         }
-        else if (failure instanceof UnavailableException)
+        else if (cause instanceof UnavailableException)
         {
-            if (((UnavailableException)failure).isPermanent())
+            if (((UnavailableException)cause).isPermanent())
                 code = HttpStatus.NOT_FOUND_404;
             else
                 code = HttpStatus.SERVICE_UNAVAILABLE_503;
@@ -735,15 +759,15 @@ public class HttpChannelState
         try(Locker.Lock lock= _locker.lock())
         {
             if (LOG.isDebugEnabled())
-                LOG.debug("onError {} {}",toStringLocked(),failure);
+                LOG.debug("onError {} {}",toStringLocked(),th);
             
             // Set error on request.
             if(_event!=null)
             {
-                _event.addThrowable(failure);
+                _event.addThrowable(th);
                 _event.getSuppliedRequest().setAttribute(ERROR_STATUS_CODE,code);
-                _event.getSuppliedRequest().setAttribute(ERROR_EXCEPTION,failure);
-                _event.getSuppliedRequest().setAttribute(RequestDispatcher.ERROR_EXCEPTION_TYPE,failure==null?null:failure.getClass());
+                _event.getSuppliedRequest().setAttribute(ERROR_EXCEPTION,th);
+                _event.getSuppliedRequest().setAttribute(ERROR_EXCEPTION_TYPE,th==null?null:th.getClass());
                 _event.getSuppliedRequest().setAttribute(ERROR_MESSAGE,reason);
             }
             else
@@ -752,8 +776,8 @@ public class HttpChannelState
                 if (error!=null)
                     throw new IllegalStateException("Error already set",error);
                 baseRequest.setAttribute(ERROR_STATUS_CODE,code);
-                baseRequest.setAttribute(ERROR_EXCEPTION,failure);
-                baseRequest.setAttribute(RequestDispatcher.ERROR_EXCEPTION_TYPE,failure==null?null:failure.getClass());
+                baseRequest.setAttribute(ERROR_EXCEPTION,th);
+                baseRequest.setAttribute(RequestDispatcher.ERROR_EXCEPTION_TYPE,th==null?null:th.getClass());
                 baseRequest.setAttribute(ERROR_MESSAGE,reason);
             }
             
@@ -1129,8 +1153,8 @@ public class HttpChannelState
     /**
      * Called to signal async read isReady() has returned false.
      * This indicates that there is no content available to be consumed
-     * and that once the channel enteres the ASYNC_WAIT state it will
-     * register for read interest by calling {@link HttpChannel#asyncReadFillInterested()}
+     * and that once the channel enters the ASYNC_WAIT state it will
+     * register for read interest by calling {@link HttpChannel#onAsyncWaitForContent()}
      * either from this method or from a subsequent call to {@link #unhandle()}.
      */
     public void onReadUnready()
@@ -1165,7 +1189,7 @@ public class HttpChannelState
         }
 
         if (interested)
-            _channel.asyncReadFillInterested();
+            _channel.onAsyncWaitForContent();
     }
 
     /**
@@ -1247,6 +1271,7 @@ public class HttpChannelState
      * Called to indicate that more content may be available,
      * but that a handling thread may need to produce (fill/parse)
      * it.  Typically called by the async read success callback.
+     * @return <code>true</code> if more content may be available
      */
     public boolean onReadPossible()
     {
@@ -1277,7 +1302,7 @@ public class HttpChannelState
     /**
      * Called to signal that a read has read -1.
      * Will wake if the read was called while in ASYNC_WAIT state
-     * @return true if woken
+     * @return <code>true</code> if woken
      */
     public boolean onReadEof()
     {

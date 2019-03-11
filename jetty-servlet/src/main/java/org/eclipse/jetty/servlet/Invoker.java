@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -32,7 +32,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
 
-import org.eclipse.jetty.http.PathMap.MappedEntry;
 import org.eclipse.jetty.http.pathmap.MappedResource;
 import org.eclipse.jetty.server.Dispatcher;
 import org.eclipse.jetty.server.Handler;
@@ -66,6 +65,7 @@ import org.eclipse.jetty.util.log.Logger;
  * @version $Id: Invoker.java 4780 2009-03-17 15:36:08Z jesse $
  *
  */
+@SuppressWarnings("serial")
 public class Invoker extends HttpServlet
 {
     private static final Logger LOG = Log.getLogger(Invoker.class);
@@ -79,6 +79,7 @@ public class Invoker extends HttpServlet
     private boolean _verbose;
 
     /* ------------------------------------------------------------ */
+    @Override
     public void init()
     {
         ServletContext config=getServletContext();
@@ -112,6 +113,7 @@ public class Invoker extends HttpServlet
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     protected void service(HttpServletRequest request, HttpServletResponse response)
         throws ServletException, IOException
     {
@@ -168,11 +170,11 @@ public class Invoker extends HttpServlet
             synchronized(_servletHandler)
             {
                 // find the entry for the invoker (me)
-                 _invokerEntry=_servletHandler.getHolderEntry(servlet_path);
+                 _invokerEntry=_servletHandler.getMappedServlet(servlet_path);
 
                 // Check for existing mapping (avoid threaded race).
                 String path=URIUtil.addPaths(servlet_path,servlet);
-                MappedResource<ServletHolder> entry = _servletHandler.getHolderEntry(path);
+                MappedResource<ServletHolder> entry = _servletHandler.getMappedServlet(path);
 
                 if (entry!=null && !entry.equals(_invokerEntry))
                 {
@@ -265,6 +267,7 @@ public class Invoker extends HttpServlet
         }
 
         /* ------------------------------------------------------------ */
+        @Override
         public String getServletPath()
         {
             if (_included)
@@ -273,6 +276,7 @@ public class Invoker extends HttpServlet
         }
 
         /* ------------------------------------------------------------ */
+        @Override
         public String getPathInfo()
         {
             if (_included)
@@ -281,6 +285,7 @@ public class Invoker extends HttpServlet
         }
 
         /* ------------------------------------------------------------ */
+        @Override
         public Object getAttribute(String name)
         {
             if (_included)

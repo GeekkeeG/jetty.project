@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,6 +19,7 @@
 package org.eclipse.jetty.http2;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -94,6 +95,19 @@ public enum ErrorCode
     public static ErrorCode from(int error)
     {
         return Codes.codes.get(error);
+    }
+
+    public static String toString(int error, String dft)
+    {
+        ErrorCode errorCode = from(error);
+        String result;
+        if (errorCode != null)
+            result = errorCode.name().toLowerCase(Locale.ENGLISH);
+        else if (dft == null)
+            result = String.valueOf(error);
+        else
+            result = dft;
+        return result;
     }
 
     private static class Codes

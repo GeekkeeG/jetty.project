@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,15 @@
 
 package org.eclipse.jetty.proxy;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -42,26 +45,24 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.IO;
+import org.eclipse.jetty.util.ProcessorUtils;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-@RunWith(Parameterized.class)
 public class ProxyServletLoadTest
 {
-    @Parameterized.Parameters(name = "{0}")
-    public static Iterable<Object[]> data()
+    public static Stream<Arguments> data()
     {
-        return Arrays.asList(new Object[][]{
-                {ProxyServlet.class},
-                {AsyncProxyServlet.class},
-                {AsyncMiddleManServlet.class}
-        });
+        return Arrays.asList(
+                ProxyServlet.class,
+                AsyncProxyServlet.class,
+                AsyncMiddleManServlet.class)
+                .stream().map(Arguments::of);
     }
 
     private static final Logger LOG = Log.getLogger(ProxyServletLoadTest.class);
@@ -74,13 +75,10 @@ public class ProxyServletLoadTest
     private Server server;
     private ServerConnector serverConnector;
 
-    public ProxyServletLoadTest(Class<?> proxyServletClass) throws Exception
+    private void startServer(Class<? extends AbstractProxyServlet> proxyServletClass, HttpServlet servlet) throws Exception
     {
-        proxyServlet = (AbstractProxyServlet)proxyServletClass.newInstance();
-    }
+        proxyServlet = proxyServletClass.getDeclaredConstructor().newInstance();
 
-    private void startServer(HttpServlet servlet) throws Exception
-    {
         QueuedThreadPool serverPool = new QueuedThreadPool();
         serverPool.setName("server");
         server = new Server(serverPool);
@@ -124,7 +122,7 @@ public class ProxyServletLoadTest
         client = result;
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         client.stop();
@@ -132,10 +130,11 @@ public class ProxyServletLoadTest
         server.stop();
     }
 
-    @Test
-    public void test() throws Exception
+    @ParameterizedTest
+    @MethodSource("data")
+    public void test(Class<? extends AbstractProxyServlet> proxyServletClass) throws Exception
     {
-        startServer(new HttpServlet()
+        startServer(proxyServletClass, new HttpServlet()
         {
             @Override
             protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException
@@ -149,7 +148,7 @@ public class ProxyServletLoadTest
         startClient();
 
         // Number of clients to simulate
-        int clientCount = Runtime.getRuntime().availableProcessors();
+        int clientCount = ProcessorUtils.availableProcessors();
 
         // Latch for number of clients still active (used to terminate test)
         final CountDownLatch activeClientLatch = new CountDownLatch(clientCount);
@@ -171,8 +170,8 @@ public class ProxyServletLoadTest
             thread.start();
         }
 
-        Assert.assertTrue(activeClientLatch.await(Math.max(clientCount * iterations * 10, 5000), TimeUnit.MILLISECONDS));
-        Assert.assertTrue(success.get());
+        assertTrue(activeClientLatch.await(Math.max(clientCount * iterations * 10, 5000), TimeUnit.MILLISECONDS));
+        assertTrue(success.get());
     }
 
     private static class ClientLoop implements Runnable

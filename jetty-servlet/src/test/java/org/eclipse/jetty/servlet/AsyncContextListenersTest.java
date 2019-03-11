@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,8 @@
 //
 
 package org.eclipse.jetty.servlet;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -37,9 +39,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.http.HttpTester;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 public class AsyncContextListenersTest
 {
@@ -58,7 +59,7 @@ public class AsyncContextListenersTest
         _server.start();
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         _server.stop();
@@ -116,7 +117,7 @@ public class AsyncContextListenersTest
     
             HttpTester.Input input = HttpTester.from(socket.getInputStream());
             HttpTester.Response response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
 
             // Send a second request
@@ -125,7 +126,7 @@ public class AsyncContextListenersTest
             output.flush();
 
             response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
         }
     }
@@ -187,7 +188,7 @@ public class AsyncContextListenersTest
 
             HttpTester.Input input = HttpTester.from(socket.getInputStream());
             HttpTester.Response response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
 
             // Send a second request
@@ -196,7 +197,7 @@ public class AsyncContextListenersTest
             output.flush();
     
             response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
         }
     }
@@ -264,7 +265,7 @@ public class AsyncContextListenersTest
     
             HttpTester.Input input = HttpTester.from(socket.getInputStream());
             HttpTester.Response response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
 
             // Send a second request
@@ -273,7 +274,7 @@ public class AsyncContextListenersTest
             output.flush();
 
             response = HttpTester.parseResponse(input);
-            Assert.assertEquals(200, response.getStatus());
+            assertEquals(200, response.getStatus());
             completes.get().await(10,TimeUnit.SECONDS);
         }
     }

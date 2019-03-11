@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
+import javax.naming.AuthenticationException;
 import javax.naming.Context;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -40,6 +41,7 @@ import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.NameCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.auth.login.FailedLoginException;
 import javax.security.auth.login.LoginException;
 
 import org.eclipse.jetty.jaas.callback.ObjectCallback;
@@ -178,14 +180,15 @@ public class LdapLoginModule extends AbstractLoginModule
 
     private DirContext _rootContext;
 
-    
+
     public class LDAPUserInfo extends UserInfo
     {
-    	Attributes attributes;
-    	
+        Attributes attributes;
+
         /**
-         * @param userName
-         * @param credential
+         * @param userName the user name
+         * @param credential the credential
+         * @param attributes the user {@link Attributes}
          */
         public LDAPUserInfo(String userName, Credential credential, Attributes attributes)
         {
@@ -198,10 +201,10 @@ public class LdapLoginModule extends AbstractLoginModule
         {
             return getUserRoles(_rootContext, getUserName(), attributes);
         }
-        
+
     }
-    
-    
+
+
     /**
      * get the available information about the user
      * <p>
@@ -214,9 +217,10 @@ public class LdapLoginModule extends AbstractLoginModule
      * @return the userinfo for the username
      * @throws Exception if unable to get the user info
      */
+    @Override
     public UserInfo getUserInfo(String username) throws Exception
     {
-    	Attributes attributes = getUserAttributes(username);
+        Attributes attributes = getUserAttributes(username);
         String pwdCredential = getUserCredentials(attributes);
 
         if (pwdCredential == null)
@@ -266,35 +270,26 @@ public class LdapLoginModule extends AbstractLoginModule
      * NOTE: this is not an user authenticated operation
      *
      * @param username
-     * @return
+     * @return the {@link Attributes} from the user
      * @throws LoginException
      */
     private Attributes getUserAttributes(String username) throws LoginException
     {
-    	Attributes attributes = null;
+        SearchResult result = findUser(username);
+        Attributes attributes = result.getAttributes();
+        return attributes;
+    }
 
-    	SearchResult result;
-		try {
-			result = findUser(username);
-	        attributes = result.getAttributes();
-		}
-		catch (NamingException e) {
-            throw new LoginException("Root context binding failure.");
-		}
-    	
-    	return attributes;
-	}
-    
     private String getUserCredentials(Attributes attributes) throws LoginException
     {
-    	String ldapCredential = null;
+        String ldapCredential = null;
 
         Attribute attribute = attributes.get(_userPasswordAttribute);
         if (attribute != null)
         {
             try
             {
-                byte[] value = (byte[]) attribute.get();
+                byte[] value = (byte[])attribute.get();
 
                 ldapCredential = new String(value);
             }
@@ -304,7 +299,7 @@ public class LdapLoginModule extends AbstractLoginModule
             }
         }
 
-        LOG.debug("user cred is: " + ldapCredential);
+        if(LOG.isDebugEnabled()) LOG.debug("user cred is: " + ldapCredential);
 
         return ldapCredential;
     }
@@ -323,25 +318,32 @@ public class LdapLoginModule extends AbstractLoginModule
     {
         String rdnValue = username;
         Attribute attribute = attributes.get(_userRdnAttribute);
-		if (attribute != null)
-		{
-		    try
-		    {
-		        rdnValue = (String) attribute.get();	// switch to the value stored in the _userRdnAttribute if we can
-		    }
-		    catch (NamingException e)
-		    {
-		    }
-		}
+        if (attribute != null)
+        {
+            try
+            {
+                rdnValue = (String)attribute.get();        // switch to the value stored in the _userRdnAttribute if we can
+            }
+            catch (NamingException e)
+            {
+            }
+        }
 
-        String userDn = _userRdnAttribute + "=" + rdnValue + "," + _userBaseDn;
+        String filter = "({0}={1})";
 
-        return getUserRolesByDn(dirContext, userDn);
+        Object[] filterArguments = new Object[]{
+                _userRdnAttribute,
+                rdnValue
+        };
+
+        SearchResult searchResult = findUser(dirContext, filter, filterArguments);
+
+        return getUserRolesByDn(dirContext, searchResult.getNameInNamespace());
     }
 
-    private List<String> getUserRolesByDn(DirContext dirContext, String userDn) throws LoginException, NamingException
+    private List<String> getUserRolesByDn(DirContext dirContext, String userDn) throws NamingException
     {
-        List<String> roleList = new ArrayList<String>();
+        List<String> roleList = new ArrayList<>();
 
         if (dirContext == null || _roleBaseDn == null || _roleMemberAttribute == null || _roleObjectClass == null)
         {
@@ -357,11 +359,11 @@ public class LdapLoginModule extends AbstractLoginModule
         Object[] filterArguments = {_roleObjectClass, _roleMemberAttribute, userDn};
         NamingEnumeration<SearchResult> results = dirContext.search(_roleBaseDn, filter, filterArguments, ctls);
 
-        LOG.debug("Found user roles?: " + results.hasMoreElements());
+        if(LOG.isDebugEnabled()) LOG.debug("Found user roles?: " + results.hasMoreElements());
 
         while (results.hasMoreElements())
         {
-            SearchResult result = (SearchResult) results.nextElement();
+            SearchResult result = results.nextElement();
 
             Attributes attributes = result.getAttributes();
 
@@ -398,6 +400,7 @@ public class LdapLoginModule extends AbstractLoginModule
      * @return true if authenticated, false otherwise
      * @throws LoginException if unable to login
      */
+    @Override
     public boolean login() throws LoginException
     {
         try
@@ -410,8 +413,8 @@ public class LdapLoginModule extends AbstractLoginModule
             Callback[] callbacks = configureCallbacks();
             getCallbackHandler().handle(callbacks);
 
-            String webUserName = ((NameCallback) callbacks[0]).getName();
-            Object webCredential = ((ObjectCallback) callbacks[1]).getObject();
+            String webUserName = ((NameCallback)callbacks[0]).getName();
+            Object webCredential = ((ObjectCallback)callbacks[1]).getObject();
 
             if (webUserName == null || webCredential == null)
             {
@@ -439,7 +442,7 @@ public class LdapLoginModule extends AbstractLoginModule
                 setCurrentUser(new JAASUserInfo(userInfo));
 
                 if (webCredential instanceof String)
-                    authed = credentialLogin(Credential.getCredential((String) webCredential));
+                    authed = credentialLogin(Credential.getCredential((String)webCredential));
                 else
                     authed = credentialLogin(webCredential);
             }
@@ -458,17 +461,27 @@ public class LdapLoginModule extends AbstractLoginModule
         {
             if (_debug)
             {
-                e.printStackTrace();
+                LOG.info( e );
             }
             throw new LoginException("IO Error performing login.");
+        }
+        catch ( AuthenticationException e )
+        {
+            if (_debug)
+            {
+                LOG.info( e );
+            }
+            return false;
+        }
+        catch (LoginException e)
+        {
+            throw e;
         }
         catch (Exception e)
         {
             if (_debug)
-            {
-                e.printStackTrace();
-            }
-            throw new LoginException("Error obtaining user info.");
+                LOG.info(e);
+            throw new LoginException ("Error obtaining user info");
         }
     }
 
@@ -494,10 +507,9 @@ public class LdapLoginModule extends AbstractLoginModule
      * @param username the user name
      * @param password the password
      * @return true always
-     * @throws LoginException if unable to bind the login
-     * @throws NamingException if failure to bind login
+     * @throws LoginException  if unable to bind the login
      */
-    public boolean bindingLogin(String username, Object password) throws LoginException, NamingException
+    public boolean bindingLogin(String username, Object password) throws LoginException
     {
         SearchResult searchResult = findUser(username);
 
@@ -505,58 +517,84 @@ public class LdapLoginModule extends AbstractLoginModule
 
         LOG.info("Attempting authentication: " + userDn);
 
-        Hashtable<Object,Object> environment = getEnvironment();
+        Hashtable<Object, Object> environment = getEnvironment();
 
-        if ( userDn == null || "".equals(userDn) )
+        if (userDn == null || "".equals(userDn))
         {
-            throw new NamingException("username may not be empty");
+            throw new FailedLoginException("username may not be empty");
         }
         environment.put(Context.SECURITY_PRINCIPAL, userDn);
         // RFC 4513 section 6.3.1, protect against ldap server implementations that allow successful binding on empty passwords
-        if ( password == null || "".equals(password))
+        if (password == null || "".equals(password))
         {
-            throw new NamingException("password may not be empty");
+            throw new FailedLoginException("password may not be empty");
         }
         environment.put(Context.SECURITY_CREDENTIALS, password);
 
-        DirContext dirContext = new InitialDirContext(environment);
-        List<String> roles = getUserRolesByDn(dirContext, userDn);
+        try
+        {
+            DirContext dirContext = new InitialDirContext(environment);
+            List<String> roles = getUserRolesByDn(dirContext, userDn);
 
-        UserInfo userInfo = new UserInfo(username, null, roles);
-        setCurrentUser(new JAASUserInfo(userInfo));
-        setAuthenticated(true);
+            UserInfo userInfo = new UserInfo(username, null, roles);
+            setCurrentUser(new JAASUserInfo(userInfo));
+            setAuthenticated(true);
 
-        return true;
+            return true;
+        }
+        catch (javax.naming.AuthenticationException e)
+        {
+            throw new FailedLoginException(e.getMessage());
+        }
+        catch (NamingException e)
+        {
+            throw new FailedLoginException (e.getMessage());
+        }
     }
 
-    private SearchResult findUser(String username) throws NamingException, LoginException
+    private SearchResult findUser(String username) throws LoginException
     {
-        SearchControls ctls = new SearchControls();
-        ctls.setCountLimit(1);
-        ctls.setDerefLinkFlag(true);
-        ctls.setSearchScope(SearchControls.SUBTREE_SCOPE);
-
         String filter = "(&(objectClass={0})({1}={2}))";
 
         if (LOG.isDebugEnabled())
             LOG.debug("Searching for user " + username + " with filter: \'" + filter + "\'" + " from base dn: " + _userBaseDn);
 
         Object[] filterArguments = new Object[]{
-                                                _userObjectClass,
-                                                _userIdAttribute,
-                                                username
+                _userObjectClass,
+                _userIdAttribute,
+                username
         };
-        NamingEnumeration<SearchResult> results = _rootContext.search(_userBaseDn, filter, filterArguments, ctls);
+
+        return findUser(_rootContext, filter, filterArguments);
+    }
+
+    private SearchResult findUser(DirContext dirContext, String filter, Object[] filterArguments) throws LoginException
+    {
+        SearchControls ctls = new SearchControls();
+        ctls.setDerefLinkFlag(true);
+        ctls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+
+        NamingEnumeration<SearchResult> results;
+        try
+        {
+            results = _rootContext.search(_userBaseDn, filter, filterArguments, ctls);
+        }
+        catch (NamingException ne)
+        {
+            throw new FailedLoginException(ne.getMessage());
+        }
 
         if (LOG.isDebugEnabled())
             LOG.debug("Found user?: " + results.hasMoreElements());
 
         if (!results.hasMoreElements())
-        {
-            throw new LoginException("User not found.");
-        }
+            throw new FailedLoginException("User not found.");
 
-        return (SearchResult) results.nextElement();
+        SearchResult searchResult = (SearchResult)results.nextElement();
+        if (results.hasMoreElements())
+            throw new FailedLoginException("Search result contains ambiguous entries");
+
+        return searchResult;
     }
 
 
@@ -565,37 +603,38 @@ public class LdapLoginModule extends AbstractLoginModule
      * <p>
      * Called once by JAAS after new instance is created.
      *
-     * @param subject the subect
+     * @param subject         the subect
      * @param callbackHandler the callback handler
-     * @param sharedState the shared state map
-     * @param options the option map
+     * @param sharedState     the shared state map
+     * @param options         the option map
      */
+    @Override
     public void initialize(Subject subject,
                            CallbackHandler callbackHandler,
-                           Map<String,?> sharedState,
-                           Map<String,?> options)
+                           Map<String, ?> sharedState,
+                           Map<String, ?> options)
     {
         super.initialize(subject, callbackHandler, sharedState, options);
 
-        _hostname = (String) options.get("hostname");
-        _port = Integer.parseInt((String) options.get("port"));
-        _contextFactory = (String) options.get("contextFactory");
-        _bindDn = (String) options.get("bindDn");
-        _bindPassword = (String) options.get("bindPassword");
-        _authenticationMethod = (String) options.get("authenticationMethod");
+        _hostname = (String)options.get("hostname");
+        _port = Integer.parseInt((String)options.get("port"));
+        _contextFactory = (String)options.get("contextFactory");
+        _bindDn = (String)options.get("bindDn");
+        _bindPassword = (String)options.get("bindPassword");
+        _authenticationMethod = (String)options.get("authenticationMethod");
 
-        _userBaseDn = (String) options.get("userBaseDn");
+        _userBaseDn = (String)options.get("userBaseDn");
 
-        _roleBaseDn = (String) options.get("roleBaseDn");
+        _roleBaseDn = (String)options.get("roleBaseDn");
 
         if (options.containsKey("forceBindingLogin"))
         {
-            _forceBindingLogin = Boolean.parseBoolean((String) options.get("forceBindingLogin"));
+            _forceBindingLogin = Boolean.parseBoolean((String)options.get("forceBindingLogin"));
         }
 
         if (options.containsKey("useLdaps"))
         {
-            _useLdaps = Boolean.parseBoolean((String) options.get("useLdaps"));
+            _useLdaps = Boolean.parseBoolean((String)options.get("useLdaps"));
         }
 
         _userObjectClass = getOption(options, "userObjectClass", _userObjectClass);
@@ -617,6 +656,7 @@ public class LdapLoginModule extends AbstractLoginModule
         }
     }
 
+    @Override
     public boolean commit() throws LoginException
     {
         try
@@ -625,12 +665,13 @@ public class LdapLoginModule extends AbstractLoginModule
         }
         catch (NamingException e)
         {
-            throw new LoginException( "error closing root context: " + e.getMessage() );
+            throw new LoginException("error closing root context: " + e.getMessage());
         }
 
         return super.commit();
     }
 
+    @Override
     public boolean abort() throws LoginException
     {
         try
@@ -639,13 +680,13 @@ public class LdapLoginModule extends AbstractLoginModule
         }
         catch (NamingException e)
         {
-            throw new LoginException( "error closing root context: " + e.getMessage() );
+            throw new LoginException("error closing root context: " + e.getMessage());
         }
 
         return super.abort();
     }
 
-    private String getOption(Map<String,?> options, String key, String defaultValue)
+    private String getOption(Map<String, ?> options, String key, String defaultValue)
     {
         Object value = options.get(key);
 
@@ -654,7 +695,7 @@ public class LdapLoginModule extends AbstractLoginModule
             return defaultValue;
         }
 
-        return (String) value;
+        return (String)value;
     }
 
     /**
@@ -670,7 +711,7 @@ public class LdapLoginModule extends AbstractLoginModule
 
         if (_hostname != null)
         {
-            env.put(Context.PROVIDER_URL, (_useLdaps?"ldaps://":"ldap://") + _hostname + (_port==0?"":":"+_port) +"/");
+            env.put(Context.PROVIDER_URL, (_useLdaps ? "ldaps://" : "ldap://") + _hostname + (_port == 0 ? "" : ":" + _port) + "/");
         }
 
         if (_authenticationMethod != null)

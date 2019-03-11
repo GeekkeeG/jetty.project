@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -146,7 +146,8 @@ public class DoSFilter implements Filter
     private static final long __DEFAULT_THROTTLE_MS = 30000L;
     private static final long __DEFAULT_MAX_REQUEST_MS_INIT_PARAM = 30000L;
     private static final long __DEFAULT_MAX_IDLE_TRACKER_MS_INIT_PARAM = 30000L;
-
+    
+    static final String NAME = "name";
     static final String MANAGED_ATTR_INIT_PARAM = "managedAttr";
     static final String MAX_REQUESTS_PER_S_INIT_PARAM = "maxRequestsPerSec";
     static final String DELAY_MS_INIT_PARAM = "delayMs";
@@ -181,13 +182,16 @@ public class DoSFilter implements Filter
     private volatile boolean _trackSessions;
     private volatile boolean _remotePort;
     private volatile boolean _enabled;
+    private volatile String _name;
     private Semaphore _passes;
     private volatile int _throttledRequests;
     private volatile int _maxRequestsPerSec;
     private Queue<AsyncContext>[] _queues;
     private AsyncListener[] _listeners;
     private Scheduler _scheduler;
+    private ServletContext _context;
 
+    @Override
     public void init(FilterConfig filterConfig) throws ServletException
     {
         _queues = new Queue[getMaxPriority() + 1];
@@ -263,11 +267,14 @@ public class DoSFilter implements Filter
         parameter = filterConfig.getInitParameter(TOO_MANY_CODE);
         setTooManyCode(parameter==null?429:Integer.parseInt(parameter));
 
-        _scheduler = startScheduler();
+        setName(filterConfig.getFilterName());
+        _context = filterConfig.getServletContext();
+        if (_context != null )
+        {    
+            _context.setAttribute(filterConfig.getFilterName(), this);
+        }
 
-        ServletContext context = filterConfig.getServletContext();
-        if (context != null && Boolean.parseBoolean(filterConfig.getInitParameter(MANAGED_ATTR_INIT_PARAM)))
-            context.setAttribute(filterConfig.getFilterName(), this);
+        _scheduler = startScheduler();        
     }
 
     protected Scheduler startScheduler() throws ServletException
@@ -284,6 +291,7 @@ public class DoSFilter implements Filter
         }
     }
 
+    @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain filterChain) throws IOException, ServletException
     {
         doFilter((HttpServletRequest)request, (HttpServletResponse)response, filterChain);
@@ -308,10 +316,10 @@ public class DoSFilter implements Filter
             // Get a rate tracker associated with this request, and record one hit.
             tracker = getRateTracker(request);
 
-            // Calculate the rate and check it is over the allowed limit
+            // Calculate the rate and check if it is over the allowed limit
             final boolean overRateLimit = tracker.isRateExceeded(System.currentTimeMillis());
 
-            // Pass it through if  we are not currently over the rate limit.
+            // Pass it through if we are not currently over the rate limit.
             if (!overRateLimit)
             {
                 if (LOG.isDebugEnabled())
@@ -375,7 +383,7 @@ public class DoSFilter implements Filter
                 // or if we were woken up we insist or we fail.
                 Boolean throttled = (Boolean)request.getAttribute(__THROTTLED);
                 long throttleMs = getThrottleMs();
-                if (throttled != Boolean.TRUE && throttleMs > 0)
+                if (!Boolean.TRUE.equals(throttled) && throttleMs > 0)
                 {
                     int priority = getPriority(request, tracker);
                     request.setAttribute(__THROTTLED, Boolean.TRUE);
@@ -393,7 +401,7 @@ public class DoSFilter implements Filter
                 }
 
                 Boolean resumed = (Boolean)request.getAttribute(_resumed);
-                if (resumed == Boolean.TRUE)
+                if (Boolean.TRUE.equals(resumed))
                 {
                     // We were resumed, we wait for the next pass.
                     _passes.acquire();
@@ -438,7 +446,7 @@ public class DoSFilter implements Filter
                         {
                             ServletRequest candidate = asyncContext.getRequest();
                             Boolean suspended = (Boolean)candidate.getAttribute(_suspended);
-                            if (suspended == Boolean.TRUE)
+                            if (Boolean.TRUE.equals(suspended))
                             {
                                 if (LOG.isDebugEnabled())
                                     LOG.debug("Resuming {}", request);
@@ -506,6 +514,9 @@ public class DoSFilter implements Filter
 
     /**
      * @deprecated use {@link #onRequestTimeout(HttpServletRequest, HttpServletResponse, Thread)} instead
+     * @param request  the current request
+     * @param response the current response
+     * @param thread the handling thread
      */
     @Deprecated
     protected void closeConnection(HttpServletRequest request, HttpServletResponse response, Thread thread)
@@ -535,6 +546,11 @@ public class DoSFilter implements Filter
     protected int getMaxPriority()
     {
         return USER_AUTH;
+    }
+    
+    public void schedule (RateTracker tracker)
+    {
+        _scheduler.schedule(tracker, getMaxIdleTrackerMs(), TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -572,7 +588,7 @@ public class DoSFilter implements Filter
             }
             else
             {
-                loadId = isRemotePort() ? (request.getRemoteAddr() + request.getRemotePort()) : request.getRemoteAddr();
+                loadId = isRemotePort() ? createRemotePortId(request) : request.getRemoteAddr();
                 type = USER_IP;
             }
         }
@@ -583,8 +599,9 @@ public class DoSFilter implements Filter
         {
             boolean allowed = checkWhitelist(request.getRemoteAddr());
             int maxRequestsPerSec = getMaxRequestsPerSec();
-            tracker = allowed ? new FixedRateTracker(loadId, type, maxRequestsPerSec)
-                    : new RateTracker(loadId, type, maxRequestsPerSec);
+            tracker = allowed ? new FixedRateTracker(_context, _name, loadId, type, maxRequestsPerSec)
+                    : new RateTracker(_context,_name, loadId, type, maxRequestsPerSec);
+            tracker.setContext(_context);
             RateTracker existing = _rateTrackers.putIfAbsent(loadId, tracker);
             if (existing != null)
                 tracker = existing;
@@ -602,6 +619,20 @@ public class DoSFilter implements Filter
         }
 
         return tracker;
+    }
+    
+    
+    
+    
+    
+    public void addToRateTracker (RateTracker tracker)
+    {
+        _rateTrackers.put(tracker.getId(), tracker);
+    }
+    
+    public void removeFromRateTracker (String id)
+    {
+        _rateTrackers.remove(id);
     }
 
     protected boolean checkWhitelist(String candidate)
@@ -706,7 +737,7 @@ public class DoSFilter implements Filter
                 byte[] result = new byte[16];
                 for (int i = 0; i < result.length; i += 2)
                 {
-                    int word = Integer.valueOf(ipv6Matcher.group(i / 2 + 1), 16);
+                    int word = Integer.parseInt(ipv6Matcher.group(i / 2 + 1), 16);
                     result[i] = (byte)((word & 0xFF00) >>> 8);
                     result[i + 1] = (byte)(word & 0xFF);
                 }
@@ -735,6 +766,7 @@ public class DoSFilter implements Filter
         return result;
     }
 
+    @Override
     public void destroy()
     {
         LOG.debug("Destroy {}",this);
@@ -932,6 +964,25 @@ public class DoSFilter implements Filter
     }
 
     /**
+     * The unique name of the filter when there is more than
+     * one DosFilter instance.
+     * 
+     * @return the name
+     */
+    public String getName()
+    {
+        return _name;
+    }
+
+    /**
+     * @param name the name to set
+     */
+    public void setName(String name)
+    {
+        _name = name;
+    }
+
+    /**
      * Check flag to insert the DoSFilter headers into the response.
      *
      * @return value of the flag
@@ -1103,17 +1154,22 @@ public class DoSFilter implements Filter
      * A RateTracker is associated with a connection, and stores request rate
      * data.
      */
-    class RateTracker implements Runnable, HttpSessionBindingListener, HttpSessionActivationListener, Serializable
+    static class RateTracker implements Runnable, HttpSessionBindingListener, HttpSessionActivationListener, Serializable
     {
         private static final long serialVersionUID = 3534663738034577872L;
 
+        protected final String _filterName;
+        protected transient ServletContext _context;
         protected final String _id;
         protected final int _type;
         protected final long[] _timestamps;
+        
         protected int _next;
 
-        public RateTracker(String id, int type, int maxRequestsPerSecond)
+        public RateTracker(ServletContext context, String filterName, String id, int type, int maxRequestsPerSecond)
         {
+            _context = context;
+            _filterName = filterName;
             _id = id;
             _type = type;
             _timestamps = new long[maxRequestsPerSecond];
@@ -1147,44 +1203,95 @@ public class DoSFilter implements Filter
             return _type;
         }
 
+        @Override
         public void valueBound(HttpSessionBindingEvent event)
         {
             if (LOG.isDebugEnabled())
                 LOG.debug("Value bound: {}", getId());
+            _context = event.getSession().getServletContext();
         }
 
+        @Override
         public void valueUnbound(HttpSessionBindingEvent event)
         {
             //take the tracker out of the list of trackers
-            _rateTrackers.remove(_id);
+            DoSFilter filter = (DoSFilter)event.getSession().getServletContext().getAttribute(_filterName);
+            removeFromRateTrackers(filter, _id);
+            _context = null;
+        }
+
+        @Override
+        public void sessionWillPassivate(HttpSessionEvent se)
+        {
+            //take the tracker of the list of trackers (if its still there)
+            DoSFilter filter = (DoSFilter)se.getSession().getServletContext().getAttribute(_filterName);
+            removeFromRateTrackers(filter, _id);
+            _context = null;
+        }
+
+        @Override
+        public void sessionDidActivate(HttpSessionEvent se)
+        {
+            RateTracker tracker = (RateTracker)se.getSession().getAttribute(__TRACKER);
+            ServletContext context = se.getSession().getServletContext();
+            tracker.setContext(context);
+            DoSFilter filter = (DoSFilter)context.getAttribute(_filterName);
+            if (filter == null)
+            {
+                LOG.info("No filter {} for rate tracker {}", _filterName, tracker);
+                return;
+            }
+            addToRateTrackers(filter, tracker);
+        }
+        
+        public void setContext (ServletContext context)
+        {
+            _context = context;
+        }
+
+
+        protected void removeFromRateTrackers (DoSFilter filter, String id)
+        {
+            if (filter == null)
+                return;
+
+            filter.removeFromRateTracker(id);
             if (LOG.isDebugEnabled())
                 LOG.debug("Tracker removed: {}", getId());
         }
 
-        public void sessionWillPassivate(HttpSessionEvent se)
-        {
-            //take the tracker of the list of trackers (if its still there)
-            _rateTrackers.remove(_id);
-        }
 
-        public void sessionDidActivate(HttpSessionEvent se)
+        protected void addToRateTrackers (DoSFilter filter, RateTracker tracker)
         {
-            RateTracker tracker = (RateTracker)se.getSession().getAttribute(__TRACKER);
-            if (tracker!=null)
-                _rateTrackers.put(tracker.getId(),tracker);
+            if (filter == null)
+                return;
+            filter.addToRateTracker(tracker);
         }
 
         @Override
         public void run()
         {
+            if (_context == null)
+            {
+                LOG.warn("Unknkown context for rate tracker {}", this);
+                return;
+            }
+
             int latestIndex = _next == 0 ? (_timestamps.length - 1) : (_next - 1);
             long last = _timestamps[latestIndex];
             boolean hasRecentRequest = last != 0 && (System.currentTimeMillis() - last) < 1000L;
 
+            DoSFilter filter = (DoSFilter)_context.getAttribute(_filterName);
+
             if (hasRecentRequest)
-                _scheduler.schedule(this, getMaxIdleTrackerMs(), TimeUnit.MILLISECONDS);
+            {
+                if (filter != null)
+                    filter.schedule(this);
+                else
+                    LOG.warn("No filter {}", _filterName);
+            }
             else
-                _rateTrackers.remove(_id);
+                removeFromRateTrackers(filter, _id);
         }
 
         @Override
@@ -1196,9 +1303,9 @@ public class DoSFilter implements Filter
 
     class FixedRateTracker extends RateTracker
     {
-        public FixedRateTracker(String id, int type, int numRecentRequestsTracked)
+        public FixedRateTracker(ServletContext context, String filterName, String id, int type, int numRecentRequestsTracked)
         {
-            super(id, type, numRecentRequestsTracked);
+            super(context, filterName, id, type, numRecentRequestsTracked);
         }
 
         @Override
@@ -1263,4 +1370,12 @@ public class DoSFilter implements Filter
             super.onTimeout(event);
         }
     }
+    
+    private String createRemotePortId(final ServletRequest request) {
+        final String addr = request.getRemoteAddr();
+        final int port = request.getRemotePort();
+        if (addr.contains(":")) return "[" + addr + "]:" + port;
+        return addr + ":" + port;
+    }
+    
 }

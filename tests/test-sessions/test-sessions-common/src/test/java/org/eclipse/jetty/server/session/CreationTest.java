@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,11 +19,12 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
@@ -40,13 +41,15 @@ import javax.servlet.http.HttpSession;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.StacklessLogging;
-import org.junit.Before;
-import org.junit.Test;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 
 
@@ -59,16 +62,6 @@ import org.junit.Test;
 public class CreationTest
 {
 
-    protected TestServlet _servlet;
-    protected TestServer _server1 = null;
-    protected CountDownLatch _synchronizer;
-    
-    @Before
-    public void setUp ()
-    {
-        _synchronizer = new CountDownLatch(1);
-        _servlet = new TestServlet(_synchronizer);
-    }
     
     
     /**
@@ -79,6 +72,7 @@ public class CreationTest
     @Test
     public void testSessionCreateWithEviction() throws Exception
     {
+
         String contextPath = "";
         String servletMapping = "/server";
         
@@ -86,14 +80,16 @@ public class CreationTest
         cacheFactory.setEvictionPolicy(SessionCache.EVICT_ON_SESSION_EXIT);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
         
-        _server1 = new TestServer(0, -1, -1, cacheFactory, storeFactory);
-        
-        ServletHolder holder = new ServletHolder(_servlet);
-        ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestServer server1 = new TestServer(0, -1, -1, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
-        _servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
-        _server1.start();
-        int port1 = _server1.getPort();
+        servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
+        server1.start();
+        int port1 = server1.getPort();
 
         try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
         {
@@ -101,34 +97,40 @@ public class CreationTest
             client.start();
             String url = "http://localhost:" + port1 + contextPath + servletMapping+"?action=create&check=false";
 
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
+
             //make a request to set up a session on the server
             ContentResponse response = client.GET(url);
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
-            
+
             String sessionCookie = response.getHeaders().get("Set-Cookie");
             assertTrue(sessionCookie != null);
-            // Mangle the cookie, replacing Path with $Path, etc.
-            sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
-            
+
+            //ensure request has finished being handled
+            synchronizer.await(5, TimeUnit.SECONDS);
+
             //session should now be evicted from the cache
             String id = TestServer.extractSessionId(sessionCookie);
-            
             assertFalse(contextHandler.getSessionHandler().getSessionCache().contains(id));
             assertTrue(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(id));
-            
+
+            synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
             //make another request for the same session
             Request request = client.newRequest("http://localhost:" + port1 + contextPath + servletMapping + "?action=test");
-            request.header("Cookie", sessionCookie);
             response = request.send();
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
             
+            //ensure request has finished being handled
+            synchronizer.await(5, TimeUnit.SECONDS);
+
             //session should now be evicted from the cache again
             assertFalse(contextHandler.getSessionHandler().getSessionCache().contains(TestServer.extractSessionId(sessionCookie)));
-           
         }
         finally
         {
-            _server1.stop();
+            server1.stop();
         }
     }
     
@@ -149,14 +151,16 @@ public class CreationTest
         DefaultSessionCacheFactory cacheFactory = new DefaultSessionCacheFactory();
         cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
-        _server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
-                
-        ServletHolder holder = new ServletHolder(_servlet);
-        ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestServer server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
-        _servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
-        _server1.start();
-        int port1 = _server1.getPort();
+        servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
+        server1.start();
+        int port1 = server1.getPort();
 
         try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
         {
@@ -164,16 +168,22 @@ public class CreationTest
             client.start();
             String url = "http://localhost:" + port1 + contextPath + servletMapping+"?action=createinv&check=false";
 
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
+
             //make a request to set up a session on the server
             ContentResponse response = client.GET(url);
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
             
+            //ensure request has finished being handled
+            synchronizer.await(5, TimeUnit.SECONDS);
+
             //check that the session does not exist
-           assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));
+           assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
         }
         finally
         {
-            _server1.stop();
+            server1.stop();
         }
     }
     
@@ -197,13 +207,16 @@ public class CreationTest
         cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
         cacheFactory.setSaveOnCreate(true);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
-        _server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);    
-        ServletHolder holder = new ServletHolder(_servlet);
-        ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestServer server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
-        _servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
-        _server1.start();
-        int port1 = _server1.getPort();
+        servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
+        server1.start();
+        int port1 = server1.getPort();
 
         try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
         {
@@ -211,24 +224,77 @@ public class CreationTest
             client.start();
             String url = "http://localhost:" + port1 + contextPath + servletMapping+"?action=createinv&check=true";
 
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
+
             //make a request to set up a session on the server
             ContentResponse response = client.GET(url);
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
             
+            synchronizer.await(5, TimeUnit.SECONDS);
+
             //check that the session does not exist
-           assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));
+           assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
         }
         finally
         {
-            _server1.stop();
+            server1.stop();
         }
     }
-    
-    
-    
-    
-    
-    
+
+
+
+    /**
+     * Create and then invalidate and then create a session in the same request
+     * @throws Exception
+     */
+    @Test
+    public void testSessionCreateInvalidateCreate() throws Exception
+    {
+        String contextPath = "";
+        String servletMapping = "/server";
+        int inactivePeriod = 20;
+        int scavengePeriod = 3;
+        DefaultSessionCacheFactory cacheFactory = new DefaultSessionCacheFactory();
+        cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
+        SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
+        TestServer server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
+        contextHandler.addServlet(holder, servletMapping);
+        servlet.setStore(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore());
+        server1.start();
+        int port1 = server1.getPort();
+
+        try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
+        {
+            HttpClient client = new HttpClient();
+            client.start();
+            String url = "http://localhost:" + port1 + contextPath + servletMapping+"?action=createinvcreate&check=false";
+
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
+
+            //make a request to set up a session on the server
+            ContentResponse response = client.GET(url);
+            assertEquals(HttpServletResponse.SC_OK,response.getStatus());
+
+            //ensure request has finished being handled
+            synchronizer.await(5, TimeUnit.SECONDS);
+
+            //check that the session does not exist
+            assertTrue(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
+            assertThat(response.getHeaders().getValuesList(HttpHeader.SET_COOKIE).size(), Matchers.is(1));
+        }
+        finally
+        {
+            server1.stop();
+        }
+    }
+
     /**
      * Create a session in a context, forward to another context and create a 
      * session in it too. Check that both sessions exist after the response
@@ -247,15 +313,17 @@ public class CreationTest
         cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
         
-        _server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
-        
-        ServletHolder holder = new ServletHolder(_servlet);
-        ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestServer server1 = new TestServer(0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
-        ServletContextHandler ctxB = _server1.addContext(contextB);
+        ServletContextHandler ctxB = server1.addContext(contextB);
         ctxB.addServlet(TestServletB.class, servletMapping);
-        _server1.start();
-        int port1 = _server1.getPort();
+        server1.start();
+        int port1 = server1.getPort();
 
         try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
         {
@@ -264,19 +332,21 @@ public class CreationTest
             String url = "http://localhost:" + port1 + contextPath + servletMapping;
 
             //make a request to set up a session on the server
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
             ContentResponse response = client.GET(url+"?action=forward");
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
-  
-            //ensure work has finished on the server side
-            _synchronizer.await();
+
+            //wait for request to have exited server completely
+            synchronizer.await(5, TimeUnit.SECONDS);
             
             //check that the sessions exist persisted
-            assertTrue(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));
-            assertTrue(ctxB.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));
+            assertTrue(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
+            assertTrue(ctxB.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
         }
         finally
         {
-            _server1.stop();
+            server1.stop();
         }
     }
     
@@ -300,15 +370,17 @@ public class CreationTest
         cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
 
-        _server1 = new TestServer (0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
-        
-        ServletHolder holder = new ServletHolder(_servlet);
-        ServletContextHandler contextHandler = _server1.addContext(contextPath);
+        TestServer server1 = new TestServer (0, inactivePeriod, scavengePeriod, cacheFactory, storeFactory);
+        TestServlet servlet = new TestServlet();
+        ServletHolder holder = new ServletHolder(servlet);
+        ServletContextHandler contextHandler = server1.addContext(contextPath);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        contextHandler.addEventListener(scopeListener);
         contextHandler.addServlet(holder, servletMapping);
-        ServletContextHandler ctxB = _server1.addContext(contextB);
+        ServletContextHandler ctxB = server1.addContext(contextB);
         ctxB.addServlet(TestServletB.class, servletMapping);
-        _server1.start();
-        int port1 = _server1.getPort();
+        server1.start();
+        int port1 = server1.getPort();
 
         try (StacklessLogging stackless = new StacklessLogging(Log.getLogger("org.eclipse.jetty.server.session")))
         {
@@ -317,19 +389,21 @@ public class CreationTest
             String url = "http://localhost:" + port1 + contextPath + servletMapping;
 
             //make a request to set up a session on the server
+            CountDownLatch synchronizer = new CountDownLatch(1);
+            scopeListener.setExitSynchronizer(synchronizer);
             ContentResponse response = client.GET(url+"?action=forwardinv");
             assertEquals(HttpServletResponse.SC_OK,response.getStatus());
             
-            //wait for the request to have finished before checking session
-            _synchronizer.await(10, TimeUnit.SECONDS);
+            //wait for request to have exited server completely
+            synchronizer.await(5, TimeUnit.SECONDS);
             
             //check that the session does not exist 
-            assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));
-            assertFalse(ctxB.getSessionHandler().getSessionCache().getSessionDataStore().exists(_servlet._id));      
+            assertFalse(contextHandler.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
+            assertFalse(ctxB.getSessionHandler().getSessionCache().getSessionDataStore().exists(servlet._id));
         }
         finally
         {
-            _server1.stop();
+            server1.stop();
         }
     }
 
@@ -338,14 +412,11 @@ public class CreationTest
 
     public static class TestServlet extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
         public String _id = null;
-        public CountDownLatch _synchronizer;
         public SessionDataStore _store;
 
-        public TestServlet (CountDownLatch latch)
-        {
-            _synchronizer = latch;
-        }
+
 
         public void setStore (SessionDataStore store)
         {
@@ -373,10 +444,11 @@ public class CreationTest
                 {
                     session = request.getSession(false);
                     assertNotNull(session);
+                    assertEquals(_id, session.getId());
+                    assertNotNull(session.getAttribute("value"));
                     assertNull(session.getAttribute("B")); //check we don't see stuff from other context
                     
                 }
-                _synchronizer.countDown();
                 return;
             }
             else if (action!=null && "test".equals(action))
@@ -416,12 +488,22 @@ public class CreationTest
                     assertNull(request.getSession(false));
                     assertNotNull(session);
                 }
+                else if ("createinvcreate".equals(action))
+                {
+                    session.invalidate();
+                    assertNull(request.getSession(false));
+                    assertNotNull(session);
+                    session = request.getSession(true);
+                    _id = session.getId();
+                }
             }
         }
     }
 
     public static class TestServletB extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse httpServletResponse) throws ServletException, IOException
         {

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -95,6 +95,7 @@ public class ContextFactory implements ObjectFactory
      * return null.
      * @see javax.naming.spi.ObjectFactory#getObjectInstance(java.lang.Object, javax.naming.Name, javax.naming.Context, java.util.Hashtable)
      */
+    @Override
     public Object getObjectInstance (Object obj,
                                      Name name,
                                      Context nameCtx,
@@ -186,7 +187,9 @@ public class ContextFactory implements ObjectFactory
         Reference ref = (Reference)obj;
         StringRefAddr parserAddr = (StringRefAddr)ref.get("parser");
         String parserClassName = (parserAddr==null?null:(String)parserAddr.getContent());
-        NameParser parser = (NameParser)(parserClassName==null?null:loader.loadClass(parserClassName).newInstance());
+        NameParser parser =
+            (NameParser)(parserClassName==null?
+                null:loader.loadClass(parserClassName).getDeclaredConstructor().newInstance());
 
         return new NamingContext (env,
                                   name.get(0),

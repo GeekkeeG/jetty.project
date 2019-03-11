@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -86,14 +86,18 @@ public abstract class AbstractLoginModule implements LoginModule
         public void setJAASInfo (Subject subject)
         {
             subject.getPrincipals().add(this.principal);
-            subject.getPrivateCredentials().add(this.user.getCredential());
+            if (this.user.getCredential() != null) {
+                subject.getPrivateCredentials().add(this.user.getCredential());
+            }
             subject.getPrincipals().addAll(roles);
         }
 
         public void unsetJAASInfo (Subject subject)
         {
             subject.getPrincipals().remove(this.principal);
-            subject.getPrivateCredentials().remove(this.user.getCredential());
+            if (this.user.getCredential() != null) {
+                subject.getPrivateCredentials().remove(this.user.getCredential());
+            }
             subject.getPrincipals().removeAll(this.roles);
         }
 
@@ -115,6 +119,12 @@ public abstract class AbstractLoginModule implements LoginModule
         }
     }
 
+    
+    
+    public abstract UserInfo getUserInfo (String username) throws Exception;
+    
+    
+    
     public Subject getSubject ()
     {
         return this.subject;
@@ -168,6 +178,7 @@ public abstract class AbstractLoginModule implements LoginModule
      * @see javax.security.auth.spi.LoginModule#abort()
      * @throws LoginException if unable to abort
      */
+    @Override
     public boolean abort() throws LoginException
     {
         this.currentUser = null;
@@ -179,6 +190,7 @@ public abstract class AbstractLoginModule implements LoginModule
      * @return true if committed, false if not (likely not authenticated)
      * @throws LoginException if unable to commit
      */
+    @Override
     public boolean commit() throws LoginException
     {
         if (!isAuthenticated())
@@ -196,7 +208,6 @@ public abstract class AbstractLoginModule implements LoginModule
 
     public Callback[] configureCallbacks ()
     {
-
         Callback[] callbacks = new Callback[3];
         callbacks[0] = new NameCallback("Enter user name");
         callbacks[1] = new ObjectCallback();
@@ -209,9 +220,7 @@ public abstract class AbstractLoginModule implements LoginModule
     {
         return false;
     }
-    
-    
-    public abstract UserInfo getUserInfo (String username) throws Exception;
+
 
 
 
@@ -220,6 +229,7 @@ public abstract class AbstractLoginModule implements LoginModule
      * @return true if is authenticated, false otherwise
      * @throws LoginException if unable to login
      */
+    @Override
     public boolean login() throws LoginException
     {
         try
@@ -286,6 +296,7 @@ public abstract class AbstractLoginModule implements LoginModule
      * @return true always
      * @throws LoginException if unable to logout
      */
+    @Override
     public boolean logout() throws LoginException
     {
         this.currentUser.unsetJAASInfo(this.subject);
@@ -300,6 +311,7 @@ public abstract class AbstractLoginModule implements LoginModule
      * @param sharedState the shared state map
      * @param options the option map
      */
+    @Override
     public void initialize(Subject subject, CallbackHandler callbackHandler,
             Map<String,?> sharedState, Map<String,?> options)
     {

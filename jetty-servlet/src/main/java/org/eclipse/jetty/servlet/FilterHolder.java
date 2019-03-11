@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -34,10 +34,11 @@ import javax.servlet.ServletException;
 
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.component.Dumpable;
+import org.eclipse.jetty.util.component.DumpableCollection;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
-public class FilterHolder extends Holder<Filter>
+public class  FilterHolder extends Holder<Filter>
 {
     private static final Logger LOG = Log.getLogger(FilterHolder.class);
 
@@ -100,10 +101,6 @@ public class FilterHolder extends Holder<Filter>
         }
     }
     
-    
-    
-
-
 
     /* ------------------------------------------------------------ */
     @Override
@@ -120,7 +117,7 @@ public class FilterHolder extends Holder<Filter>
                     ServletContext context=_servletHandler.getServletContext();
                     _filter=(context instanceof ServletContextHandler.Context)
                             ?((ServletContextHandler.Context)context).createFilter(getHeldClass())
-                            :getHeldClass().newInstance();
+                            :getHeldClass().getDeclaredConstructor().newInstance();
                 }
                 catch (ServletException se)
                 {
@@ -197,19 +194,22 @@ public class FilterHolder extends Holder<Filter>
 
     /* ------------------------------------------------------------ */
     @Override
-    public String toString()
-    {
-        return getName();
-    }
-    
-    /* ------------------------------------------------------------ */
-    @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        super.dump(out, indent);
-        if(_filter instanceof Dumpable) {
-            ((Dumpable) _filter).dump(out, indent);
-        }
+        if (_initParams.isEmpty())
+            Dumpable.dumpObjects(out, indent, this,
+                _filter == null?getHeldClass():_filter);
+        else
+            Dumpable.dumpObjects(out, indent, this,
+                _filter == null?getHeldClass():_filter,
+                new DumpableCollection("initParams", _initParams.entrySet()));
+    }
+
+    /* ------------------------------------------------------------ */
+    @Override
+    public String toString()
+    {
+        return String.format("%s@%x==%s,inst=%b,async=%b",_name,hashCode(),_className,_filter!=null,isAsyncSupported());
     }
 
     /* ------------------------------------------------------------ */
@@ -225,6 +225,7 @@ public class FilterHolder extends Holder<Filter>
     /* ------------------------------------------------------------ */
     protected class Registration extends HolderRegistration implements FilterRegistration.Dynamic
     {
+        @Override
         public void addMappingForServletNames(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... servletNames)
         {
             illegalStateIfContextStarted();
@@ -238,6 +239,7 @@ public class FilterHolder extends Holder<Filter>
                 _servletHandler.prependFilterMapping(mapping);
         }
 
+        @Override
         public void addMappingForUrlPatterns(EnumSet<DispatcherType> dispatcherTypes, boolean isMatchAfter, String... urlPatterns)
         {
             illegalStateIfContextStarted();
@@ -251,6 +253,7 @@ public class FilterHolder extends Holder<Filter>
                 _servletHandler.prependFilterMapping(mapping);
         }
 
+        @Override
         public Collection<String> getServletNameMappings()
         {
             FilterMapping[] mappings =_servletHandler.getFilterMappings();
@@ -266,6 +269,7 @@ public class FilterHolder extends Holder<Filter>
             return names;
         }
 
+        @Override
         public Collection<String> getUrlPatternMappings()
         {
             FilterMapping[] mappings =_servletHandler.getFilterMappings();
@@ -287,6 +291,7 @@ public class FilterHolder extends Holder<Filter>
     class Config extends HolderConfig implements FilterConfig
     {
         /* ------------------------------------------------------------ */
+        @Override
         public String getFilterName()
         {
             return _name;

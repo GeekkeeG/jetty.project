@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -46,6 +46,11 @@ import javax.servlet.SessionTrackingMode;
 import javax.servlet.descriptor.JspConfigDescriptor;
 import javax.servlet.descriptor.JspPropertyGroupDescriptor;
 import javax.servlet.descriptor.TaglibDescriptor;
+import javax.servlet.http.HttpSessionActivationListener;
+import javax.servlet.http.HttpSessionAttributeListener;
+import javax.servlet.http.HttpSessionBindingListener;
+import javax.servlet.http.HttpSessionIdListener;
+import javax.servlet.http.HttpSessionListener;
 
 import org.eclipse.jetty.security.ConstraintAware;
 import org.eclipse.jetty.security.ConstraintMapping;
@@ -148,7 +153,7 @@ public class ServletContextHandler extends ContextHandler
     /* ------------------------------------------------------------ */
     public ServletContextHandler(HandlerContainer parent, String contextPath, SessionHandler sessionHandler, SecurityHandler securityHandler, ServletHandler servletHandler, ErrorHandler errorHandler,int options)
     {
-        super((ContextHandler.Context)null);
+        super(parent, contextPath);
         _options=options;
         _scontext = new Context();
         _sessionHandler = sessionHandler;
@@ -158,20 +163,32 @@ public class ServletContextHandler extends ContextHandler
         _objFactory = new DecoratedObjectFactory();
         _objFactory.addDecorator(new DeprecationWarning());
 
-        if (contextPath!=null)
-            setContextPath(contextPath);
-        
-        if (parent instanceof HandlerWrapper)
-            ((HandlerWrapper)parent).setHandler(this);
-        else if (parent instanceof HandlerCollection)
-            ((HandlerCollection)parent).addHandler(this);
-        
-        
         // Link the handlers
         relinkHandlers();
         
         if (errorHandler!=null)
             setErrorHandler(errorHandler);
+    }
+    
+    /* ------------------------------------------------------------ */
+    /** Add EventListener
+     * Adds an EventListener to the list. @see org.eclipse.jetty.server.handler.ContextHandler#addEventListener().
+     * Also adds any listeners that are session related to the SessionHandler.
+     * @param listener the listener to add
+     */
+    @Override
+    public void addEventListener(EventListener listener)
+    {
+        super.addEventListener(listener);
+        if ((listener instanceof HttpSessionActivationListener)
+            || (listener instanceof HttpSessionAttributeListener)
+            || (listener instanceof HttpSessionBindingListener)
+            || (listener instanceof HttpSessionListener)
+            || (listener instanceof HttpSessionIdListener))
+        {
+            if (_sessionHandler!=null)
+                _sessionHandler.addEventListener(listener);
+        }
     }
     
     @Override
@@ -270,6 +287,7 @@ public class ServletContextHandler extends ContextHandler
     {
         super.doStop();
         _objFactory.clear();
+        getServletContext().removeAttribute(DecoratedObjectFactory.ATTR);
     }
 
     /* ------------------------------------------------------------ */
@@ -301,7 +319,7 @@ public class ServletContextHandler extends ContextHandler
     {
         try
         {
-            return (SecurityHandler)_defaultSecurityHandlerClass.newInstance();
+            return _defaultSecurityHandlerClass.getDeclaredConstructor().newInstance();
         }
         catch(Exception e)
         {
@@ -330,13 +348,16 @@ public class ServletContextHandler extends ContextHandler
 
         if (_servletHandler != null)
         {
-            // Call decorators on all holders, and also on any EventListeners before
-            // decorators are called on any other classes (like servlets and filters)
+            //Ensure listener instances are created, added to ContextHandler
             if(_servletHandler.getListeners() != null)
             {
                 for (ListenerHolder holder:_servletHandler.getListeners())
                 {             
-                    _objFactory.decorate(holder.getListener());
+                    holder.start();
+                    //we need to pass in the context because the ServletHandler has not
+                    //yet got a reference to the ServletContext (happens in super.startContext)
+                    holder.initialize(_scontext);
+                    addEventListener(holder.getListener());
                 }
             }
         }
@@ -660,6 +681,7 @@ public class ServletContextHandler extends ContextHandler
      * Insert a HandlerWrapper before the first Session,Security or ServletHandler
      * but after any other HandlerWrappers.
      */
+    @Override
     public void insertHandler(HandlerWrapper handler)
     {
         if (handler instanceof SessionHandler)
@@ -779,6 +801,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getUrlPatterns()
          */
+        @Override
         public Collection<String> getUrlPatterns()
         {
             return new ArrayList<String>(_urlPatterns); // spec says must be a copy
@@ -793,6 +816,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getElIgnored()
          */
+        @Override
         public String getElIgnored()
         {
             return _elIgnored;
@@ -806,6 +830,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getPageEncoding()
          */
+        @Override
         public String getPageEncoding()
         {
             return _pageEncoding;
@@ -854,6 +879,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getScriptingInvalid()
          */
+        @Override
         public String getScriptingInvalid()
         {
             return _scriptingInvalid;
@@ -862,6 +888,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getIsXml()
          */
+        @Override
         public String getIsXml()
         {
             return _isXml;
@@ -870,6 +897,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getIncludePreludes()
          */
+        @Override
         public Collection<String> getIncludePreludes()
         {
             return new ArrayList<String>(_includePreludes); //must be a copy
@@ -884,6 +912,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getIncludeCodas()
          */
+        @Override
         public Collection<String> getIncludeCodas()
         {
             return new ArrayList<String>(_includeCodas); //must be a copy
@@ -898,6 +927,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getDeferredSyntaxAllowedAsLiteral()
          */
+        @Override
         public String getDeferredSyntaxAllowedAsLiteral()
         {
             return _deferredSyntaxAllowedAsLiteral;
@@ -906,6 +936,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getTrimDirectiveWhitespaces()
          */
+        @Override
         public String getTrimDirectiveWhitespaces()
         {
             return _trimDirectiveWhitespaces;
@@ -914,6 +945,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getDefaultContentType()
          */
+        @Override
         public String getDefaultContentType()
         {
             return _defaultContentType;
@@ -922,6 +954,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getBuffer()
          */
+        @Override
         public String getBuffer()
         {
             return _buffer;
@@ -930,11 +963,13 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspPropertyGroupDescriptor#getErrorOnUndeclaredNamespace()
          */
+        @Override
         public String getErrorOnUndeclaredNamespace()
         {
             return _errorOnUndeclaredNamespace;
         }
 
+        @Override
         public String toString ()
         {
             StringBuffer sb = new StringBuffer();
@@ -965,6 +1000,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.TaglibDescriptor#getTaglibURI()
          */
+        @Override
         public String getTaglibURI()
         {
            return _uri;
@@ -978,6 +1014,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.TaglibDescriptor#getTaglibLocation()
          */
+        @Override
         public String getTaglibLocation()
         {
             return _location;
@@ -988,6 +1025,7 @@ public class ServletContextHandler extends ContextHandler
             _location = location;
         }
 
+        @Override
         public String toString()
         {
             return ("TagLibDescriptor: taglib-uri="+_uri+" location="+_location);
@@ -1006,6 +1044,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspConfigDescriptor#getTaglibs()
          */
+        @Override
         public Collection<TaglibDescriptor> getTaglibs()
         {
             return new ArrayList<TaglibDescriptor>(_taglibs);
@@ -1019,6 +1058,7 @@ public class ServletContextHandler extends ContextHandler
         /**
          * @see javax.servlet.descriptor.JspConfigDescriptor#getJspPropertyGroups()
          */
+        @Override
         public Collection<JspPropertyGroupDescriptor> getJspPropertyGroups()
         {
            return new ArrayList<JspPropertyGroupDescriptor>(_jspPropertyGroups);
@@ -1029,6 +1069,7 @@ public class ServletContextHandler extends ContextHandler
             _jspPropertyGroups.add(g);
         }
 
+        @Override
         public String toString()
         {
             StringBuffer sb = new StringBuffer();
@@ -1445,10 +1486,14 @@ public class ServletContextHandler extends ContextHandler
                 throw new IllegalStateException();
             if (!_enabled)
                 throw new UnsupportedOperationException();
-            super.addListener(t);
+
+
+            checkListener(t.getClass());
+            
             ListenerHolder holder = getServletHandler().newListenerHolder(Source.JAVAX_API);
             holder.setListener(t);
             getServletHandler().addListener(holder);
+            addProgrammaticListener(t);
         }
 
         @Override

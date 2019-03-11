@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,7 @@
 
 package org.eclipse.jetty.deploy;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,6 +26,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -45,6 +47,8 @@ import org.eclipse.jetty.util.annotation.Name;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
+import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.xml.XmlConfiguration;
 
 /**
  * The Deployment Manager.
@@ -285,13 +289,13 @@ public class DeploymentManager extends ContainerLifeCycle
 
     public Collection<AppEntry> getAppEntries()
     {
-        return _apps;
+        return Collections.unmodifiableCollection(_apps);
     }
 
     @ManagedAttribute("Deployed Apps")
     public Collection<App> getApps()
     {
-        List<App> ret = new ArrayList<App>();
+        List<App> ret = new ArrayList<  >();
         for (AppEntry entry : _apps)
         {
             ret.add(entry.app);
@@ -308,10 +312,12 @@ public class DeploymentManager extends ContainerLifeCycle
      */
     public Collection<App> getApps(Node node)
     {
-        List<App> ret = new ArrayList<App>();
+        Objects.requireNonNull(node);
+        
+        List<App> ret = new ArrayList<>();
         for (AppEntry entry : _apps)
         {
-            if (entry.lifecyleNode == node)
+            if (node.equals(entry.lifecyleNode))
             {
                 ret.add(entry.app);
             }
@@ -504,6 +510,18 @@ public class DeploymentManager extends ContainerLifeCycle
         catch (Throwable t)
         {
             LOG.warn("Unable to reach node goal: " + nodeName,t);
+            // migrate to FAILED node
+            Node failed = _lifecycle.getNodeByName(AppLifeCycle.FAILED);
+            appentry.setLifeCycleNode(failed);
+            try
+            {
+                _lifecycle.runBindings(failed, appentry.app, this);
+            }
+            catch (Throwable ignore)
+            {
+                // The runBindings failed for 'failed' node
+                LOG.ignore(ignore);
+            }
         }
     }
 
@@ -589,10 +607,15 @@ public class DeploymentManager extends ContainerLifeCycle
     {
         return _lifecycle.getNodes();
     }
-    
-    @ManagedOperation(value="list apps that are located at specified App LifeCycle nodes", impact="ACTION")
-    public Collection<App> getApps(@Name("nodeName") String nodeName)
+
+    public Collection<App> getApps(String nodeName)
     {
         return getApps(_lifecycle.getNodeByName(nodeName));
+    }
+
+    public void scope(XmlConfiguration xmlc, Resource webapp)
+        throws IOException
+    {
+        xmlc.setJettyStandardIdsAndProperties(getServer(),webapp);
     }
 }

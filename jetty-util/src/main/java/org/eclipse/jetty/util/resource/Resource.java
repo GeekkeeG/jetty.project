@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,6 +28,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.file.Path;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -199,6 +200,19 @@ public abstract class Resource implements ResourceFactory, Closeable
     public static Resource newResource(File file)
     {
         return new PathResource(file.toPath());
+    }
+
+    /* ------------------------------------------------------------ */
+    /**
+     * Construct a Resource from provided path
+     *
+     * @param path the path
+     * @return the Resource for the provided path
+     * @since 9.4.10
+     */
+    public static Resource newResource(Path path)
+    {
+        return new PathResource(path);
     }
 
     /* ------------------------------------------------------------ */
@@ -447,8 +461,8 @@ public abstract class Resource implements ResourceFactory, Closeable
     /* ------------------------------------------------------------ */
     /**
      * list of resource names contained in the given resource.
-     * 
-     * @return a list of resource names contained in the given resource.
+     * Ordering is unspecified, so callers may wish to sort the return value to ensure deterministic behavior.
+     * @return a list of resource names contained in the given resource, or null.
      * Note: The resource names are not URL encoded.
      */
     public abstract String[] list();
@@ -565,7 +579,7 @@ public abstract class Resource implements ResourceFactory, Closeable
         if (parent)
         {
             buf.append("<TR><TD><A HREF=\"");
-            buf.append(URIUtil.addPaths(base,"../"));
+            buf.append(URIUtil.addEncodedPaths(base,"../"));
             buf.append("\">Parent Directory</A></TD><TD></TD><TD></TD></TR>\n");
         }
         
@@ -578,7 +592,7 @@ public abstract class Resource implements ResourceFactory, Closeable
             Resource item = addPath(ls[i]);
             
             buf.append("\n<TR><TD><A HREF=\"");
-            String path=URIUtil.addPaths(encodedBase,URIUtil.encodePath(ls[i]));
+            String path=URIUtil.addEncodedPaths(encodedBase,URIUtil.encodePath(ls[i]));
             
             buf.append(path);
             

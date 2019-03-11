@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -26,10 +26,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.function.ToIntFunction;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -98,6 +100,12 @@ public class HttpFields implements Iterable<HttpField>
     {
         return new Itr();
     }
+
+    public ListIterator<HttpField> listIterator()
+    {
+        return new Itr();
+    }
+    
     
     public Stream<HttpField> stream()
     {
@@ -431,13 +439,26 @@ public class HttpFields implements Iterable<HttpField>
      */
     public List<String> getQualityCSV(HttpHeader header)
     {
+        return getQualityCSV(header,null);
+    }
+
+    /**
+     * Get multiple field values of the same name, split and
+     * sorted as a {@link QuotedQualityCSV}
+     *
+     * @param header The header
+     * @param secondaryOrdering Function to apply an ordering other than specified by quality
+     * @return List the values in quality order with the q param and OWS stripped
+     */
+    public List<String> getQualityCSV(HttpHeader header, ToIntFunction<String> secondaryOrdering)
+    {
         QuotedQualityCSV values = null;
         for (HttpField f : this)
         {
             if (f.getHeader()==header)
             {
                 if (values==null)
-                    values = new QuotedQualityCSV();
+                    values = new QuotedQualityCSV(secondaryOrdering);
                 values.addValue(f.getValue());
             }
         }
@@ -1063,16 +1084,18 @@ public class HttpFields implements Iterable<HttpField>
     }
 
 
-    private class Itr implements Iterator<HttpField> 
+    private class Itr implements ListIterator<HttpField> 
     {
         int _cursor;       // index of next element to return
         int _last=-1;
 
+        @Override
         public boolean hasNext() 
         {
             return _cursor != _size;
         }
 
+        @Override
         public HttpField next() 
         {
             int i = _cursor;
@@ -1082,6 +1105,7 @@ public class HttpFields implements Iterable<HttpField>
             return _fields[_last=i];
         }
 
+        @Override
         public void remove() 
         {
             if (_last<0)
@@ -1089,6 +1113,49 @@ public class HttpFields implements Iterable<HttpField>
 
             System.arraycopy(_fields,_last+1,_fields,_last,--_size-_last);
             _cursor=_last;
+            _last=-1;
+        }
+
+        @Override
+        public boolean hasPrevious()
+        {
+            return _cursor>0;
+        }
+
+        @Override
+        public HttpField previous()
+        {
+            if (_cursor == 0)
+                throw new NoSuchElementException();
+            return _fields[_last=--_cursor];
+        }
+
+        @Override
+        public int nextIndex()
+        {
+            return _cursor+1;
+        }
+
+        @Override
+        public int previousIndex()
+        {
+            return _cursor-1;
+        }
+
+        @Override
+        public void set(HttpField field)
+        { 
+            if (_last<0)
+                throw new IllegalStateException();
+            _fields[_last] = field;
+        }
+
+        @Override
+        public void add(HttpField field)
+        {
+            _fields = Arrays.copyOf(_fields,_fields.length+1);
+            System.arraycopy(_fields,_cursor,_fields,_cursor+1,_size++);
+            _fields[_cursor++] = field;
             _last=-1;
         }
     }

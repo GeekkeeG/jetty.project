@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,8 @@
 
 package org.eclipse.jetty.server;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,9 +33,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.Test;
 
 public class ProxyProtocolTest
 {
@@ -49,7 +51,7 @@ public class ProxyProtocolTest
         server.start();
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         if (server != null)
@@ -86,7 +88,7 @@ public class ProxyProtocolTest
             InputStream input = socket.getInputStream();
             BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
             String response1 = reader.readLine();
-            Assert.assertTrue(response1.startsWith("HTTP/1.1 200 "));
+            assertTrue(response1.startsWith("HTTP/1.1 200 "));
             while (true)
             {
                 if (reader.readLine().isEmpty())
@@ -103,7 +105,7 @@ public class ProxyProtocolTest
             output.flush();
 
             String response2 = reader.readLine();
-            Assert.assertTrue(response2.startsWith("HTTP/1.1 200 "));
+            assertTrue(response2.startsWith("HTTP/1.1 200 "));
             while (true)
             {
                 if (reader.readLine() == null)

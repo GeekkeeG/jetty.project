@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -31,8 +31,9 @@ import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,10 +47,10 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.Loader;
+import org.eclipse.jetty.util.MultiException;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.TypeUtil;
 import org.eclipse.jetty.util.component.LifeCycle;
@@ -89,11 +90,12 @@ public class XmlConfiguration
     private static final XmlParser __parser = initParser();
     private static XmlParser initParser()
     {
+        ClassLoader loader = XmlConfiguration.class.getClassLoader();
         XmlParser parser = new XmlParser();
-        URL config60 = Loader.getResource("org/eclipse/jetty/xml/configure_6_0.dtd");
-        URL config76 = Loader.getResource("org/eclipse/jetty/xml/configure_7_6.dtd");
-        URL config90 = Loader.getResource("org/eclipse/jetty/xml/configure_9_0.dtd");
-        URL config93 = Loader.getResource("org/eclipse/jetty/xml/configure_9_3.dtd");
+        URL config60 = loader.getResource("org/eclipse/jetty/xml/configure_6_0.dtd");
+        URL config76 = loader.getResource("org/eclipse/jetty/xml/configure_7_6.dtd");
+        URL config90 = loader.getResource("org/eclipse/jetty/xml/configure_9_0.dtd");
+        URL config93 = loader.getResource("org/eclipse/jetty/xml/configure_9_3.dtd");
         parser.redirectEntity("configure.dtd",config90);
         parser.redirectEntity("configure_1_0.dtd",config60);
         parser.redirectEntity("configure_1_1.dtd",config60);
@@ -114,6 +116,56 @@ public class XmlConfiguration
         return parser;
     }
 
+    /** 
+     * Set the standard IDs and properties expected in a jetty XML file:
+     * <ul>
+     * <li>RefId Server</li>
+     * <li>Property jetty.home</li>
+     * <li>Property jetty.home.uri</li>
+     * <li>Property jetty.base</li>
+     * <li>Property jetty.base.uri</li>
+     * <li>Property jetty.webapps</li>
+     * <li>Property jetty.webapps.uri</li>
+     * </ul>
+     * @param server The Server object to set
+     * @param webapp The webapps Resource
+     */
+    public void setJettyStandardIdsAndProperties(Object server, Resource webapp)
+    {
+        try
+        {
+            if (server!=null)
+                getIdMap().put("Server", server);
+
+            Path home = Paths.get(System.getProperty("jetty.home", "."));
+            getProperties().put("jetty.home",home.toString());
+            getProperties().put("jetty.home.uri",normalizeURI(home.toUri().toASCIIString()));
+
+            Path base = Paths.get(System.getProperty("jetty.base", home.toString()));
+            getProperties().put("jetty.base",base.toString());
+            getProperties().put("jetty.base.uri",normalizeURI(base.toUri().toASCIIString()));
+
+            if (webapp!=null)
+            {
+                Path webappPath = webapp.getFile().toPath().toAbsolutePath();
+                getProperties().put("jetty.webapp", webappPath.toString());
+                getProperties().put("jetty.webapps", webappPath.getParent().toString());
+                getProperties().put("jetty.webapps.uri", normalizeURI(webapp.getURI().toString()));
+            }
+        }
+        catch(Exception e)
+        {
+            LOG.warn(e);
+        }
+    }
+    
+    public static String normalizeURI(String uri)
+    {
+        if (uri.endsWith("/"))
+            return uri.substring(0,uri.length()-1);
+        return uri;
+    }
+    
     private final Map<String, Object> _idMap = new HashMap<>();
     private final Map<String, String> _propertyMap = new HashMap<>();
     private final URL _url;
@@ -278,6 +330,7 @@ public class XmlConfiguration
         XmlParser.Node _root;
         XmlConfiguration _configuration;
 
+        @Override
         public void init(URL url, XmlParser.Node root, XmlConfiguration configuration)
         {
             _url=url==null?null:url.toString();
@@ -285,6 +338,7 @@ public class XmlConfiguration
             _configuration=configuration;
         }
 
+        @Override
         public Object configure(Object obj) throws Exception
         {
             // Check the class of the object
@@ -301,6 +355,7 @@ public class XmlConfiguration
             return obj;
         }
 
+        @Override
         public Object configure() throws Exception
         {
             Class<?> oClass = nodeClass(_root);
@@ -481,6 +536,8 @@ public class XmlConfiguration
             if (LOG.isDebugEnabled())
                 LOG.debug("XML " + (obj != null?obj.toString():oClass.getName()) + "." + name + "(" + value + ")");
 
+            MultiException me = new MultiException();
+            
             // Try for trivial match
             try
             {
@@ -491,6 +548,7 @@ public class XmlConfiguration
             catch (IllegalArgumentException | IllegalAccessException | NoSuchMethodException e)
             {
                 LOG.ignore(e);
+                me.add(e);
             }
 
             // Try for native match
@@ -505,6 +563,7 @@ public class XmlConfiguration
             catch (NoSuchFieldException | IllegalArgumentException | IllegalAccessException | NoSuchMethodException e)
             {
                 LOG.ignore(e);
+                me.add(e);
             }
 
             // Try a field
@@ -520,11 +579,13 @@ public class XmlConfiguration
             catch (NoSuchFieldException e)
             {
                 LOG.ignore(e);
+                me.add(e);
             }
 
             // Search for a match by trying all the set methods
             Method[] sets = oClass.getMethods();
             Method set = null;
+            String types = null;
             for (int s = 0; sets != null && s < sets.length; s++)
             {
                 if (sets[s].getParameterCount()!=1)
@@ -532,6 +593,7 @@ public class XmlConfiguration
                 Class<?>[] paramTypes = sets[s].getParameterTypes();
                 if (name.equals(sets[s].getName()))
                 {
+                    types = types==null?paramTypes[0].getName():(types+","+paramTypes[0].getName());
                     // lets try it
                     try
                     {
@@ -542,6 +604,7 @@ public class XmlConfiguration
                     catch (IllegalArgumentException | IllegalAccessException e)
                     {
                         LOG.ignore(e);
+                        me.add(e);
                     }
 
                     try
@@ -556,6 +619,7 @@ public class XmlConfiguration
                     catch (IllegalAccessException e)
                     {
                         LOG.ignore(e);
+                        me.add(e);
                     }
                 }
             }
@@ -586,11 +650,21 @@ public class XmlConfiguration
                 catch (NoSuchMethodException | IllegalAccessException | InstantiationException e)
                 {
                     LOG.ignore(e);
+                    me.add(e);
                 }
             }
 
             // No Joy
-            throw new NoSuchMethodException(oClass + "." + name + "(" + vClass[0] + ")");
+            String message = oClass + "." + name + "(" + vClass[0] + ")";
+            if (types!=null)
+                message += ". Found setters for "+types;
+            throw new NoSuchMethodException(message)
+            {
+                {
+                    for (int i=0; i<me.size(); i++)
+                        addSuppressed(me.getThrowable(i));
+                }
+            };
         }
 
         /**
@@ -1441,22 +1515,6 @@ public class XmlConfiguration
                 {
                     Properties properties = null;
 
-                    // Look for properties from start.jar
-                    try
-                    {
-                        Class<?> config = XmlConfiguration.class.getClassLoader().loadClass("org.eclipse.jetty.start.Config");
-                        properties = (Properties)config.getMethod("getProperties").invoke(null);
-                        LOG.debug("org.eclipse.jetty.start.Config properties = {}",properties);
-                    }
-                    catch (NoClassDefFoundError | ClassNotFoundException e)
-                    {
-                        LOG.ignore(e);
-                    }
-                    catch (Exception e)
-                    {
-                        LOG.warn(e);
-                    }
-
                     // If no start.config properties, use clean slate
                     if (properties == null)
                     {
@@ -1479,7 +1537,7 @@ public class XmlConfiguration
 
                     // For all arguments, parse XMLs
                     XmlConfiguration last = null;
-                    Object[] obj = new Object[args.length];
+                    List<Object> objects = new ArrayList<>(args.length);
                     for (int i = 0; i < args.length; i++)
                     {
                         if (!args[i].toLowerCase(Locale.ENGLISH).endsWith(".properties") && (args[i].indexOf('=')<0))
@@ -1496,17 +1554,20 @@ public class XmlConfiguration
                                 }
                                 configuration.getProperties().putAll(props);
                             }
-                            obj[i] = configuration.configure();
+
+                            Object obj = configuration.configure();
+                            if (obj!=null && !objects.contains(obj))
+                                objects.add(obj);
                             last = configuration;
                         }
                     }
 
                     // For all objects created by XmlConfigurations, start them if they are lifecycles.
-                    for (int i = 0; i < args.length; i++)
+                    for (Object obj : objects)
                     {
-                        if (obj[i] instanceof LifeCycle)
+                        if (obj instanceof LifeCycle)
                         {
-                            LifeCycle lc = (LifeCycle)obj[i];
+                            LifeCycle lc = (LifeCycle)obj;
                             if (!lc.isRunning())
                                 lc.start();
                         }

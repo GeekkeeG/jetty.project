@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,9 @@
 //
 
 package org.eclipse.jetty.fcgi.server.proxy;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.EnumSet;
@@ -35,9 +38,8 @@ import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 public class TryFilesFilterTest
 {
@@ -76,7 +78,7 @@ public class TryFilesFilterTest
         server.start();
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         server.stop();
@@ -91,10 +93,10 @@ public class TryFilesFilterTest
             @Override
             protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException
             {
-                Assert.assertTrue("https".equalsIgnoreCase(req.getScheme()));
-                Assert.assertTrue(req.isSecure());
-                Assert.assertEquals(forwardPath, req.getRequestURI());
-                Assert.assertTrue(req.getQueryString().endsWith(path));
+                assertTrue("https".equalsIgnoreCase(req.getScheme()));
+                assertTrue(req.isSecure());
+                assertEquals(forwardPath, req.getRequestURI());
+                assertTrue(req.getQueryString().endsWith(path));
             }
         });
 
@@ -103,6 +105,6 @@ public class TryFilesFilterTest
                 .path(path)
                 .send();
 
-        Assert.assertEquals(200, response.getStatus());
+        assertEquals(200, response.getStatus());
     }
 }

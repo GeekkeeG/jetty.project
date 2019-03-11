@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -52,6 +52,7 @@ public class StatisticsServlet extends HttpServlet
     private MemoryMXBean _memoryBean;
     private Connector[] _connectors;
 
+    @Override
     public void init() throws ServletException
     {
         ServletContext context = getServletContext();
@@ -79,11 +80,13 @@ public class StatisticsServlet extends HttpServlet
         }
     }
 
+    @Override
     public void doPost(HttpServletRequest sreq, HttpServletResponse sres) throws ServletException, IOException
     {
         doGet(sreq, sres);
     }
 
+    @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException
     {
         if (_statsHandler == null)
@@ -101,7 +104,7 @@ public class StatisticsServlet extends HttpServlet
             }
         }
 
-        if (Boolean.valueOf( req.getParameter("statsReset")))
+        if (Boolean.parseBoolean( req.getParameter("statsReset")))
         {
             _statsHandler.statsReset();
             return;
@@ -111,7 +114,7 @@ public class StatisticsServlet extends HttpServlet
         if (wantXml == null)
           wantXml = req.getParameter("XML");
 
-        if (Boolean.valueOf(wantXml))
+        if (Boolean.parseBoolean(wantXml))
         {
             sendXmlResponse(resp);
         }

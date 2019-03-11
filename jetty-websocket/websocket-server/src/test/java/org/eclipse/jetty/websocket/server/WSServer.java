@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,7 +20,7 @@ package org.eclipse.jetty.websocket.server;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,8 +40,7 @@ import org.eclipse.jetty.toolchain.test.FS;
 import org.eclipse.jetty.toolchain.test.IO;
 import org.eclipse.jetty.toolchain.test.JAR;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
-import org.eclipse.jetty.toolchain.test.OS;
-import org.eclipse.jetty.toolchain.test.TestingDir;
+import org.eclipse.jetty.toolchain.test.jupiter.WorkDir;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.resource.Resource;
@@ -68,7 +67,7 @@ public class WSServer
     private File webinf;
     private File classesDir;
 
-    public WSServer(TestingDir testdir, String contextName)
+    public WSServer(WorkDir testdir, String contextName)
     {
         this(testdir.getPath().toFile(),contextName);
     }
@@ -86,7 +85,7 @@ public class WSServer
         String endpointPath = clazz.getName().replace('.','/') + ".class";
         URL classUrl = cl.getResource(endpointPath);
         assertThat("Class URL for: " + clazz,classUrl,notNullValue());
-        File destFile = new File(classesDir,OS.separators(endpointPath));
+        File destFile = new File(classesDir,FS.separators(endpointPath));
         FS.ensureDirExists(destFile.getParentFile());
         File srcFile = new File(classUrl.toURI());
         IO.copy(srcFile,destFile);

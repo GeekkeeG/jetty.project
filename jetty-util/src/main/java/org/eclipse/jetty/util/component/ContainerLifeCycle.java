@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,9 +22,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.eclipse.jetty.util.MultiException;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.ManagedOperation;
 import org.eclipse.jetty.util.log.Log;
@@ -104,6 +107,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
                         if (!l.isRunning())
                             start(l);
                         break;
+                        
                     case AUTO:
                         if (l.isRunning())
                             unmanage(b);
@@ -112,6 +116,9 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
                             manage(b);
                             start(l);
                         }
+                        break;
+                        
+                    default:
                         break;
                 }
             }
@@ -152,14 +159,23 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
         super.doStop();
         List<Bean> reverse = new ArrayList<>(_beans);
         Collections.reverse(reverse);
+        MultiException mex = new MultiException();
         for (Bean b : reverse)
         {
             if (b._managed==Managed.MANAGED && b._bean instanceof LifeCycle)
             {
                 LifeCycle l = (LifeCycle)b._bean;
-                stop(l);
+                try
+                {
+                    stop(l);
+                }
+                catch (Throwable th)
+                {
+                    mex.add(th);
+                }
             }
         }
+        mex.ifExceptionThrow();
     }
 
     /**
@@ -176,7 +192,14 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
             if (b._bean instanceof Destroyable && (b._managed==Managed.MANAGED || b._managed==Managed.POJO))
             {
                 Destroyable d = (Destroyable)b._bean;
-                d.destroy();
+                try
+                {
+                    d.destroy();
+                }
+                catch(Throwable th)
+                {
+                    LOG.warn(th);
+                }
             }
         }
         _beans.clear();
@@ -198,11 +221,36 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
      * @param bean the bean to test
      * @return whether this aggregate contains and manages the bean
      */
+    @Override
     public boolean isManaged(Object bean)
     {
         for (Bean b : _beans)
             if (b._bean == bean)
                 return b.isManaged();
+        return false;
+    }
+
+    /**
+     * @param bean the bean to test
+     * @return whether this aggregate contains the bean in auto state
+     */
+    public boolean isAuto(Object bean)
+    {
+        for (Bean b : _beans)
+            if (b._bean == bean)
+                return b._managed==Managed.AUTO;
+        return false;
+    }
+
+    /**
+     * @param bean the bean to test
+     * @return whether this aggregate contains the bean in auto state
+     */
+    public boolean isUnmanaged(Object bean)
+    {
+        for (Bean b : _beans)
+            if (b._bean == bean)
+                return b._managed==Managed.UNMANAGED;
         return false;
     }
 
@@ -236,6 +284,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
      * @param managed whether to managed the lifecycle of the bean
      * @return true if the bean was added, false if it was already present
      */
+    @Override
     public boolean addBean(Object o, boolean managed)
     {
         if (o instanceof LifeCycle)
@@ -380,6 +429,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
      *
      * @param bean The bean to manage (must already have been added).
      */
+    @Override
     public void manage(Object bean)
     {
         for (Bean b : _beans)
@@ -426,6 +476,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
      *
      * @param bean The bean to unmanage (must already have been added).
      */
+    @Override
     public void unmanage(Object bean)
     {
         for (Bean b : _beans)
@@ -589,6 +640,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
         try
         {
             dump(System.err, "");
+            System.err.println(Dumpable.KEY);
         }
         catch (IOException e)
         {
@@ -600,119 +652,85 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
     @ManagedOperation("Dump the object to a string")
     public String dump()
     {
-        return dump(this);
+        return Dumpable.dump(this);
     }
 
+    /**
+     * @param dumpable the object to dump
+     * @return the string representation of the given Dumpable
+     * @deprecated use {@link Dumpable#dump(Dumpable)} instead
+     */
+    @Deprecated
     public static String dump(Dumpable dumpable)
     {
-        StringBuilder b = new StringBuilder();
-        try
-        {
-            dumpable.dump(b, "");
-        }
-        catch (IOException e)
-        {
-            LOG.warn(e);
-        }
-        return b.toString();
-    }
-
-    public void dump(Appendable out) throws IOException
-    {
-        dump(out, "");
-    }
-
-    protected void dumpThis(Appendable out) throws IOException
-    {
-        out.append(String.valueOf(this)).append(" - ").append(getState()).append("\n");
-    }
-
-    public static void dumpObject(Appendable out, Object o) throws IOException
-    {
-        try
-        {
-            if (o instanceof LifeCycle)
-                out.append(String.valueOf(o)).append(" - ").append((AbstractLifeCycle.getState((LifeCycle)o))).append("\n");
-            else
-                out.append(String.valueOf(o)).append("\n");
-        }
-        catch (Throwable th)
-        {
-            out.append(" => ").append(th.toString()).append('\n');
-        }
+        return Dumpable.dump(dumpable);
     }
 
     @Override
     public void dump(Appendable out, String indent) throws IOException
     {
-        dumpBeans(out,indent);
+        dumpObjects(out,indent);
     }
 
-    protected void dumpBeans(Appendable out, String indent, Collection<?>... collections) throws IOException
+    /**
+     * Dump this object to an Appendable with no indent.
+     * @param out The appendable to dump to.
+     * @throws IOException May be thrown by the Appendable
+     */
+    public void dump(Appendable out) throws IOException
     {
-        dumpThis(out);
-        int size = _beans.size();
-        for (Collection<?> c : collections)
-            size += c.size();
-        if (size == 0)
-            return;
-        int i = 0;
-        for (Bean b : _beans)
-        {
-            i++;
-
-            switch(b._managed)
-            {
-                case POJO:
-                    out.append(indent).append(" +- ");
-                    if (b._bean instanceof Dumpable)
-                        ((Dumpable)b._bean).dump(out, indent + (i == size ? "    " : " |  "));
-                    else
-                        dumpObject(out, b._bean);
-                    break;
-
-                case MANAGED:
-                    out.append(indent).append(" += ");
-                    if (b._bean instanceof Dumpable)
-                        ((Dumpable)b._bean).dump(out, indent + (i == size ? "    " : " |  "));
-                    else
-                        dumpObject(out, b._bean);
-                    break;
-
-                case UNMANAGED:
-                    out.append(indent).append(" +~ ");
-                    dumpObject(out, b._bean);
-                    break;
-
-                case AUTO:
-                    out.append(indent).append(" +? ");
-                    if (b._bean instanceof Dumpable)
-                        ((Dumpable)b._bean).dump(out, indent + (i == size ? "    " : " |  "));
-                    else
-                        dumpObject(out, b._bean);
-                    break;
-
-            }
-        }
-
-        if (i<size)
-            out.append(indent).append(" |\n");
-
-        for (Collection<?> c : collections)
-        {
-            for (Object o : c)
-            {
-                i++;
-                out.append(indent).append(" +> ");
-
-                if (o instanceof Dumpable)
-                    ((Dumpable)o).dump(out, indent + (i == size ? "    " : " |  "));
-                else
-                    dumpObject(out, o);
-            }
-        }
+        dump(out, "");
     }
 
+    /**
+     * Dump just this object, but not it's children.  Typically used to
+     * implement {@link #dump(Appendable, String)}
+     * @param out The appendable to dump to
+     * @throws IOException May be thrown by the Appendable
+     */
+    @Deprecated
+    protected void dumpThis(Appendable out) throws IOException
+    {
+        out.append(String.valueOf(this)).append(" - ").append(getState()).append("\n");
+    }
+
+    /**
+     * @param out The Appendable to dump to
+     * @param obj The object to dump
+     * @throws IOException May be thrown by the Appendable
+     * @deprecated use {@link Dumpable#dumpObject(Appendable, Object)} instead
+     */
+    @Deprecated
+    public static void dumpObject(Appendable out, Object obj) throws IOException
+    {
+        Dumpable.dumpObject(out, obj);
+    }
+
+    /** Dump this object, it's contained beans and additional items to an Appendable
+     * @param out The appendable to dump to
+     * @param indent The indent to apply after any new lines
+     * @param items Additional items to be dumped as contained.
+     * @throws IOException May be thrown by the Appendable
+     */
+    protected void dumpObjects(Appendable out, String indent, Object... items) throws IOException
+    {
+        Dumpable.dumpObjects(out,indent,this, items);
+    }
+
+    /**
+     * @param out The appendable to dump to
+     * @param indent The indent to apply after any new lines
+     * @param items Additional collections to be dumped
+     * @throws IOException May be thrown by the Appendable
+     * @deprecated use {@link #dumpObjects(Appendable, String, Object...)}
+     */
+    @Deprecated
+    protected void dumpBeans(Appendable out, String indent, Collection<?>... items) throws IOException
+    {
+        dump(out, indent, items);
+    }
+
+    @Deprecated
     public static void dump(Appendable out, String indent, Collection<?>... collections) throws IOException
     {
         if (collections.length == 0)
@@ -730,11 +748,7 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
             {
                 i++;
                 out.append(indent).append(" +- ");
-
-                if (o instanceof Dumpable)
-                    ((Dumpable)o).dump(out, indent + (i == size ? "    " : " |  "));
-                else
-                    dumpObject(out, o);
+                Dumpable.dumpObjects(out,indent + (i<size ? " |  " : "    "), o);
             }
         }
     }
@@ -756,6 +770,19 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
         public boolean isManaged()
         {
             return _managed==Managed.MANAGED;
+        }
+
+        public boolean isManageable()
+        {
+            switch(_managed)
+            {
+                case MANAGED:
+                    return true;
+                case AUTO:
+                    return _bean instanceof LifeCycle && ((LifeCycle)_bean).isStopped();
+                default:
+                    return false;
+            }
         }
 
         @Override
@@ -816,6 +843,41 @@ public class ContainerLifeCycle extends AbstractLifeCycle implements Container, 
                             continue loop;
                 }
                 addBean(n);
+            }
+        }
+    }
+
+
+    /**
+     * @param clazz the class of the beans
+     * @return the list of beans of the given class from the entire managed hierarchy
+     * @param <T> the Bean type
+     */
+    @Override
+    public <T> Collection<T> getContainedBeans(Class<T> clazz)
+    {
+        Set<T> beans = new HashSet<>();
+        getContainedBeans(clazz, beans);
+        return beans;
+    }
+
+    /**
+     * @param clazz the class of the beans
+     * @param <T> the Bean type
+     * @param beans the collection to add beans of the given class from the entire managed hierarchy
+     */
+    protected <T> void getContainedBeans(Class<T> clazz, Collection<T> beans)
+    {
+        beans.addAll(getBeans(clazz));
+        for (Container c : getBeans(Container.class))
+        {
+            Bean bean = getBean(c);
+            if (bean!=null && bean.isManageable())
+            {
+                if (c instanceof ContainerLifeCycle)
+                    ((ContainerLifeCycle)c).getContainedBeans(clazz, beans);
+                else
+                    beans.addAll(c.getContainedBeans(clazz));
             }
         }
     }

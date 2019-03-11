@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,7 +19,7 @@
 package org.eclipse.jetty.start;
 
 /**
- * A Usage Error has occured. Print the usage and exit with the appropriate exit code.
+ * A Usage Error has occurred. Print the usage and exit with the appropriate exit code.
  */
 @SuppressWarnings("serial")
 public class UsageException extends RuntimeException
@@ -33,6 +33,12 @@ public class UsageException extends RuntimeException
     public static final int ERR_UNKNOWN = -9;
     private int exitCode;
 
+    public UsageException(int exitCode, String message)
+    {
+        super(message);
+        this.exitCode = exitCode;
+    }
+    
     public UsageException(int exitCode, String format, Object... objs)
     {
         super(String.format(format,objs));

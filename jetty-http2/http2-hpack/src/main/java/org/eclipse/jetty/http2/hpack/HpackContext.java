@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,6 +19,7 @@
 package org.eclipse.jetty.http2.hpack;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -254,6 +255,7 @@ public class HpackContext
         {
             if (LOG.isDebugEnabled())
                 LOG.debug(String.format("HdrTbl[%x] !added size %d>%d",hashCode(),size,_maxDynamicTableSizeInBytes));
+            _dynamicTable.evictAll();
             return null;
         }
         _dynamicTableSizeInBytes+=size;
@@ -390,7 +392,18 @@ public class HpackContext
             if (LOG.isDebugEnabled())
                 LOG.debug(String.format("HdrTbl[%x] entries=%d, size=%d, max=%d",HpackContext.this.hashCode(),_dynamicTable.size(),_dynamicTableSizeInBytes,_maxDynamicTableSizeInBytes));
         }
-
+        
+        private void evictAll()
+        {
+            if (LOG.isDebugEnabled())
+                LOG.debug(String.format("HdrTbl[%x] evictAll",HpackContext.this.hashCode()));
+            _fieldMap.clear();
+            _nameMap.clear();
+            _offset = 0;
+            _size = 0;
+            _dynamicTableSizeInBytes = 0;
+            Arrays.fill(_entries,null);
+        }
     }
 
     public static class Entry
@@ -430,6 +443,7 @@ public class HpackContext
             return null;
         }
 
+        @Override
         public String toString()
         {
             return String.format("{%s,%d,%s,%x}",isStatic()?"S":"D",_slot,_field,hashCode());

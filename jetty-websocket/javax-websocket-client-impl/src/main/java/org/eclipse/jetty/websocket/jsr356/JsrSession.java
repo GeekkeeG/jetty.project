@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -328,8 +328,11 @@ public class JsrSession extends WebSocketSession implements javax.websocket.Sess
     @Override
     public void setMaxBinaryMessageBufferSize(int length)
     {
-        getPolicy().setMaxBinaryMessageSize(length);
+        // incoming streaming buffer size
         getPolicy().setMaxBinaryMessageBufferSize(length);
+
+        // bump overall message limit (used in non-streaming)
+        getPolicy().setMaxBinaryMessageSize(length);
     }
 
     @Override
@@ -342,8 +345,11 @@ public class JsrSession extends WebSocketSession implements javax.websocket.Sess
     @Override
     public void setMaxTextMessageBufferSize(int length)
     {
-        getPolicy().setMaxTextMessageSize(length);
+        // incoming streaming buffer size
         getPolicy().setMaxTextMessageBufferSize(length);
+
+        // bump overall message limit (used in non-streaming)
+        getPolicy().setMaxTextMessageSize(length);
     }
 
     public void setPathParameters(Map<String, String> pathParams)

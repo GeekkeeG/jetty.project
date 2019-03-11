@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -147,6 +147,7 @@ public class InetAddressSet extends AbstractSet<String> implements Set<String>, 
             _address=address;
         }
 
+        @Override
         public boolean test(InetAddress address, byte[] raw)
         {
             return _address.equals(address);
@@ -197,6 +198,7 @@ public class InetAddressSet extends AbstractSet<String> implements Set<String>, 
             }
         }
 
+        @Override
         public boolean test(InetAddress item, byte[] raw)
         {
             if (raw.length!=_min.length)
@@ -246,11 +248,11 @@ public class InetAddressSet extends AbstractSet<String> implements Set<String>, 
             _octets = cidr/8;
             _mask = 0xff&(0xff<<(8-cidr%8));
             _masked = _mask==0?0:_raw[_octets]&_mask;
-            
+                        
             if (cidr>(_raw.length*8))
                 throw new IllegalArgumentException("CIDR too large: "+pattern);
                 
-            if (_mask!=0 && _raw[_octets]!=_masked)
+            if (_mask!=0 && (0xff&_raw[_octets])!=_masked)
                 throw new IllegalArgumentException("CIDR bits non zero: "+pattern);
             
             for (int o=_octets+(_mask==0?0:1);o<_raw.length;o++)
@@ -258,6 +260,7 @@ public class InetAddressSet extends AbstractSet<String> implements Set<String>, 
                     throw new IllegalArgumentException("CIDR bits non zero: "+pattern);
         }
 
+        @Override
         public boolean test(InetAddress item, byte[] raw)
         {
             if (raw.length!=_raw.length)
@@ -303,6 +306,7 @@ public class InetAddressSet extends AbstractSet<String> implements Set<String>, 
             }
         }
 
+        @Override
         public boolean test(InetAddress item, byte[] raw)
         {
             if (raw.length!=4)

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,9 +20,9 @@ package org.eclipse.jetty.webapp;
 
 import java.io.IOException;
 import java.net.URL;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.eclipse.jetty.util.ConcurrentHashSet;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.ManagedOperation;
 import org.eclipse.jetty.util.log.Log;
@@ -40,7 +40,7 @@ public class CachingWebAppClassLoader extends WebAppClassLoader
 {
     private static final Logger LOG = Log.getLogger(CachingWebAppClassLoader.class);
     
-    private final ConcurrentHashSet<String> _notFound = new ConcurrentHashSet<>();
+    private final Set<String> _notFound = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<String,URL> _cache = new ConcurrentHashMap<>();
     
     public CachingWebAppClassLoader(ClassLoader parent, Context context) throws IOException
@@ -64,23 +64,26 @@ public class CachingWebAppClassLoader extends WebAppClassLoader
         }
         
         URL url = _cache.get(name);
-        
-        if (name==null)
+
+        if (url == null)
         {
+            // Not found in cache, try parent
             url = super.getResource(name);
         
             if (url==null)
             {
+                // Still not found, cache the not-found result
                 if (LOG.isDebugEnabled())
                     LOG.debug("Caching not found resource {}",name);
                 _notFound.add(name);
             }
             else
             {
+                // Cache the new result
                 _cache.putIfAbsent(name,url);
             }
         }
-        
+
         return url;
     }
 

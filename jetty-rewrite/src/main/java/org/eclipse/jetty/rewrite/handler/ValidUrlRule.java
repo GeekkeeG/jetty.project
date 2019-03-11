@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -115,9 +115,10 @@ public class ValidUrlRule extends Rule
         
         LOG.debug("{} {} {} {}", Character.charCount(codepoint), codepoint, block, Character.isISOControl(codepoint));
         
-        return (!Character.isISOControl(codepoint)) && block != null && block != Character.UnicodeBlock.SPECIALS;       
+        return (!Character.isISOControl(codepoint)) && block != null && !Character.UnicodeBlock.SPECIALS.equals(block);       
     }
 
+    @Override
     public String toString()
     {
         return super.toString() + "[" + _code + ":" + _reason + "]";

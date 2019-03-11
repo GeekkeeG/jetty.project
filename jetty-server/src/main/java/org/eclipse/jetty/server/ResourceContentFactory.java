@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,6 +19,7 @@
 package org.eclipse.jetty.server;
 
 import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -55,13 +56,20 @@ public class ResourceContentFactory implements ContentFactory
     public HttpContent getContent(String pathInContext,int maxBufferSize)
         throws IOException
     {
-        // try loading the content from our factory.
-        Resource resource=_factory.getResource(pathInContext);
-        HttpContent loaded = load(pathInContext,resource,maxBufferSize);
-        return loaded;
+        try
+        {
+            // try loading the content from our factory.
+            Resource resource = _factory.getResource(pathInContext);
+            HttpContent loaded = load(pathInContext, resource, maxBufferSize);
+            return loaded;
+        }
+        catch (Throwable t)
+        {
+            // Any error has potential to reveal fully qualified path
+            throw (InvalidPathException) new InvalidPathException(pathInContext, "Invalid PathInContext").initCause(t);
+        }
     }
-    
-    
+
     /* ------------------------------------------------------------ */
     private HttpContent load(String pathInContext, Resource resource, int maxBufferSize)
         throws IOException
@@ -82,7 +90,7 @@ public class ResourceContentFactory implements ContentFactory
             {
                 String compressedPathInContext = pathInContext + format._extension;
                 Resource compressedResource = _factory.getResource(compressedPathInContext);
-                if (compressedResource.exists() && compressedResource.lastModified() >= resource.lastModified()
+                if (compressedResource != null && compressedResource.exists() && compressedResource.lastModified() >= resource.lastModified()
                         && compressedResource.length() < resource.length())
                     compressedContents.put(format,
                             new ResourceHttpContent(compressedResource,_mimeTypes.getMimeByExtension(compressedPathInContext),maxBufferSize));

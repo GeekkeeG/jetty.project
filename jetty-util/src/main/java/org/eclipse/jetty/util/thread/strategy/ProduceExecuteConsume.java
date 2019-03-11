@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,8 +23,8 @@ import java.util.concurrent.Executor;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.ExecutionStrategy;
+import org.eclipse.jetty.util.thread.Invocable;
 import org.eclipse.jetty.util.thread.Invocable.InvocationType;
-import org.eclipse.jetty.util.thread.Invocable.InvocableExecutor;
 import org.eclipse.jetty.util.thread.Locker;
 import org.eclipse.jetty.util.thread.Locker.Lock;
 
@@ -38,18 +38,13 @@ public class ProduceExecuteConsume implements ExecutionStrategy
 
     private final Locker _locker = new Locker();
     private final Producer _producer;
-    private final InvocableExecutor _executor;
+    private final Executor _executor;
     private State _state = State.IDLE;
 
     public ProduceExecuteConsume(Producer producer, Executor executor)
     {
-        this(producer,executor,InvocationType.NON_BLOCKING);
-    }
-    
-    public ProduceExecuteConsume(Producer producer, Executor executor, InvocationType preferred)
-    {
         _producer = producer;
-        _executor = new InvocableExecutor(executor,preferred);
+        _executor = executor;
     }
 
     @Override
@@ -97,14 +92,17 @@ public class ProduceExecuteConsume implements ExecutionStrategy
             }
 
             // Execute the task.
-            _executor.execute(task);
+            if (Invocable.getInvocationType(task)==InvocationType.NON_BLOCKING)
+                task.run();
+            else
+                _executor.execute(task);
         }        
     }
 
     @Override
     public void dispatch()
     {
-        produce();
+        _executor.execute(()->produce());
     }
 
     private enum State

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,9 @@
 //
 
 package org.eclipse.jetty.websocket.jsr356.server;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -39,10 +42,10 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.websocket.jsr356.server.deploy.WebSocketServerContainerInitializer;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class BinaryStreamTest
 {
@@ -52,7 +55,7 @@ public class BinaryStreamTest
     private ServerConnector connector;
     private WebSocketContainer wsClient;
 
-    @Before
+    @BeforeEach
     public void prepare() throws Exception
     {
         server = new Server();
@@ -67,10 +70,9 @@ public class BinaryStreamTest
         server.start();
 
         wsClient = ContainerProvider.getWebSocketContainer();
-        server.addBean(wsClient, true);
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         server.stop();
@@ -100,8 +102,8 @@ public class BinaryStreamTest
              output.write(data);
         }
 
-        Assert.assertTrue(client.await(5, TimeUnit.SECONDS));
-        Assert.assertArrayEquals(data, client.getEcho());
+        assertTrue(client.await(5, TimeUnit.SECONDS));
+        assertArrayEquals(data, client.getEcho());
     }
 
     @Test
@@ -119,8 +121,8 @@ public class BinaryStreamTest
                 output.write(data[i]);
         }
 
-        Assert.assertTrue(client.await(5, TimeUnit.SECONDS));
-        Assert.assertArrayEquals(data, client.getEcho());
+        assertTrue(client.await(5, TimeUnit.SECONDS));
+        assertArrayEquals(data, client.getEcho());
     }
 
     private byte[] randomBytes(int size)

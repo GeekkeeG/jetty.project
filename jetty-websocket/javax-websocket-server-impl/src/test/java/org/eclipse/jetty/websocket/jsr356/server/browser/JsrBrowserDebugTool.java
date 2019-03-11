@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -67,7 +67,10 @@ public class JsrBrowserDebugTool
         {
             JsrBrowserDebugTool tool = new JsrBrowserDebugTool();
             tool.setupServer(port);
-            tool.runForever();
+            tool.server.start();
+            tool.server.dumpStdErr();
+            LOG.info("Server available at {}", tool.server.getURI());
+            tool.server.join();
         }
         catch (Throwable t)
         {
@@ -77,17 +80,11 @@ public class JsrBrowserDebugTool
 
     private Server server;
 
-    private void runForever() throws Exception
-    {
-        server.start();
-        server.dumpStdErr();
-        LOG.info("Server available.");
-        server.join();
-    }
-
-    private void setupServer(int port) throws DeploymentException, ServletException, URISyntaxException, MalformedURLException, IOException
+    private ServerContainer setupServer(int port) throws DeploymentException, ServletException, URISyntaxException, MalformedURLException, IOException
     {
         server = new Server();
+        
+        server.setDumpAfterStart(true);
         
         HttpConfiguration httpConf = new HttpConfiguration();
         httpConf.setSendServerVersion(true);
@@ -113,5 +110,6 @@ public class JsrBrowserDebugTool
         container.addEndpoint(JsrBrowserSocket.class);
 
         LOG.info("{} setup on port {}",this.getClass().getName(),port);
+        return container;
     }
 }

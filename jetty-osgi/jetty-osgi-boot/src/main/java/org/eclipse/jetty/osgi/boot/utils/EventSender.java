@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,13 +23,12 @@ import java.util.Hashtable;
 
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
-import org.osgi.framework.ServiceReference;
 import org.osgi.service.event.Event;
 import org.osgi.service.event.EventAdmin;
 import org.osgi.util.tracker.ServiceTracker;
 
 /**
- * Utility class for emiting OSGi EventAdmin events
+ * Utility class for emitting OSGi EventAdmin events
  */
 public class EventSender
 {    
@@ -68,7 +67,7 @@ public class EventSender
     {        
         EventAdmin service = (EventAdmin)_serviceTracker.getService();
         if (service != null) {
-            Dictionary<String,Object> props = new Hashtable<String,Object>();
+            Dictionary<String,Object> props = new Hashtable<>();
             props.put("bundle.symbolicName", wab.getSymbolicName());
             props.put("bundle.id", wab.getBundleId());
             props.put("bundle", wab);

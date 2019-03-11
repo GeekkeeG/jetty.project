@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,15 +19,16 @@
 package org.eclipse.jetty.http;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.nio.ByteBuffer;
 
 import org.eclipse.jetty.util.BufferUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class HttpFieldTest
 {
@@ -180,5 +181,15 @@ public class HttpFieldTest
         String s=BufferUtil.toString(buf);
         
         assertEquals("Accept: something\r\n",s);
+    }
+
+    @Test
+    public void testCachedFieldWithHeaderName()
+    {
+        PreEncodedHttpField field = new PreEncodedHttpField("X-My-Custom-Header", "something");
+
+        assertNull(field.getHeader());
+        assertEquals("X-My-Custom-Header", field.getName());
+        assertEquals("something", field.getValue());
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -49,6 +49,7 @@ public class javaNameParser implements NameParser
     * of this parser.
     * @exception NamingException If a naming exception was encountered.
     */
+   @Override
    public Name parse(String name) throws NamingException
    {
       return new CompoundName(name, syntax);

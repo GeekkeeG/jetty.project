@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -32,7 +32,7 @@ import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
 /* ------------------------------------------------------------ */
-/** Abstract resource class.
+/** URL resource class.
  */
 public class URLResource extends Resource
 {
@@ -171,19 +171,6 @@ public class URLResource extends Resource
     public File getFile()
         throws IOException
     {
-        // Try the permission hack
-        if (checkConnection())
-        {
-            Permission perm = _connection.getPermission();
-            if (perm instanceof java.io.FilePermission)
-                return new File(perm.getName());
-        }
-
-        // Try the URL file arg
-        try {return new File(_url.getFile());}
-        catch(Exception e) {LOG.ignore(e);}
-
-        // Don't know the file
         return null;    
     }
 
@@ -196,7 +183,6 @@ public class URLResource extends Resource
     {
         return _url.toExternalForm();
     }
-
     
     /* ------------------------------------------------------------ */
     /**
@@ -209,8 +195,6 @@ public class URLResource extends Resource
     {
         return getInputStream (true); //backwards compatibility
     }
-    
-    
  
     /* ------------------------------------------------------------ */
     /**
@@ -303,7 +287,7 @@ public class URLResource extends Resource
 
         path = URIUtil.canonicalPath(path);
 
-        return newResource(URIUtil.addPaths(_url.toExternalForm(),URIUtil.encodePath(path)), _useCaches);
+        return newResource(URIUtil.addEncodedPaths(_url.toExternalForm(),URIUtil.encodePath(path)), _useCaches);
     }
 
     /* ------------------------------------------------------------ */

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -72,7 +72,6 @@ public class Parser
     private ByteBuffer payload;
     private int payloadLength;
     private PayloadProcessor maskProcessor = new DeMaskProcessor();
-    // private PayloadProcessor strictnessProcessor;
 
     /** 
      * Is there an extension using RSV flag?
@@ -180,7 +179,7 @@ public class Parser
         return (flagsInUse & 0x10) != 0;
     }
 
-    protected void notifyFrame(final Frame f)
+    protected void notifyFrame(final Frame f) throws WebSocketException
     {
         if (LOG.isDebugEnabled())
             LOG.debug("{} Notify {}",policy.getBehavior(),getIncomingFramesHandler());
@@ -213,6 +212,8 @@ public class Parser
 
         if (incomingFramesHandler == null)
         {
+            if(LOG.isDebugEnabled())
+                LOG.debug("No IncomingFrames Handler to notify");
             return;
         }
         try
@@ -221,23 +222,12 @@ public class Parser
         }
         catch (WebSocketException e)
         {
-            notifyWebSocketException(e);
+            throw e;
         }
         catch (Throwable t)
         {
-            LOG.warn(t);
-            notifyWebSocketException(new WebSocketException(t));
+            throw new WebSocketException(t);
         }
-    }
-
-    protected void notifyWebSocketException(WebSocketException e)
-    {
-        LOG.warn(e);
-        if (incomingFramesHandler == null)
-        {
-            return;
-        }
-        incomingFramesHandler.incomingError(e);
     }
 
     public void parse(ByteBuffer buffer) throws WebSocketException
@@ -265,8 +255,6 @@ public class Parser
         {
             buffer.position(buffer.limit()); // consume remaining
             reset();
-            // let session know
-            notifyWebSocketException(e);
             // need to throw for proper close behavior in connection
             throw e;
         }
@@ -274,11 +262,8 @@ public class Parser
         {
             buffer.position(buffer.limit()); // consume remaining
             reset();
-            // let session know
-            WebSocketException e = new WebSocketException(t);
-            notifyWebSocketException(e);
             // need to throw for proper close behavior in connection
-            throw e;
+            throw new WebSocketException(t);
         }
     }
 

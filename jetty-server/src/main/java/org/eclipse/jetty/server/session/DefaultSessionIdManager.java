@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,7 +29,6 @@ import javax.servlet.http.HttpServletRequest;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.SessionIdManager;
-import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
@@ -56,7 +55,7 @@ public class DefaultSessionIdManager extends ContainerLifeCycle implements Sessi
 {
     private  final static Logger LOG = Log.getLogger("org.eclipse.jetty.server.session");
     
-    private final static String __NEW_SESSION_ID="org.eclipse.jetty.server.newSessionId";
+    public final static String __NEW_SESSION_ID="org.eclipse.jetty.server.newSessionId";
     
     protected static final AtomicLong COUNTER = new AtomicLong();
 
@@ -115,6 +114,7 @@ public class DefaultSessionIdManager extends ContainerLifeCycle implements Sessi
     /**
      * @param houseKeeper the housekeeper
      */
+    @Override
     public void setSessionHouseKeeper (HouseKeeper houseKeeper)
     {
         updateBean(_houseKeeper, houseKeeper);
@@ -126,6 +126,7 @@ public class DefaultSessionIdManager extends ContainerLifeCycle implements Sessi
     /**
      * @return the housekeeper
      */
+    @Override
     public HouseKeeper getSessionHouseKeeper()
     {
         return _houseKeeper;
@@ -475,6 +476,7 @@ public class DefaultSessionIdManager extends ContainerLifeCycle implements Sessi
     }
 
     /* ------------------------------------------------------------ */
+    @Override
     public void invalidateAll (String id)
     {        
         //tell all contexts that may have a session object with this id to
@@ -516,18 +518,15 @@ public class DefaultSessionIdManager extends ContainerLifeCycle implements Sessi
      * 
      * @return all session managers
      */
+    @Override
     public Set<SessionHandler> getSessionHandlers()
     {
         Set<SessionHandler> handlers = new HashSet<>();
-
-        Handler[] contexts = _server.getChildHandlersByClass(ContextHandler.class);
-        for (int i=0; contexts!=null && i<contexts.length; i++)
+        Handler[] tmp = _server.getChildHandlersByClass(SessionHandler.class);
+        if (tmp != null)
         {
-            SessionHandler sessionHandler = ((ContextHandler)contexts[i]).getChildHandlerByClass(SessionHandler.class);
-            if (sessionHandler != null) 
-            {
-                handlers.add(sessionHandler);
-            }
+            for (Handler h:tmp)
+                handlers.add((SessionHandler)h);
         }
         return handlers;
     }

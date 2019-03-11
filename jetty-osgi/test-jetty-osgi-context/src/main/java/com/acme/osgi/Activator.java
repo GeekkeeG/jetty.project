@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -42,6 +42,7 @@ public class Activator implements BundleActivator
      * 
      * @param context
      */
+    @Override
     public void start(final BundleContext context) throws Exception
     {
         ContextHandler ch = new ContextHandler();
@@ -72,6 +73,7 @@ public class Activator implements BundleActivator
      * @see
      * org.osgi.framework.BundleActivator#stop(org.osgi.framework.BundleContext)
      */
+    @Override
     public void stop(BundleContext context) throws Exception
     {
         _sr.unregister();

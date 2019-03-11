@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -30,7 +30,10 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.util.security.Password;
 
 /** 
- * DefaultUsernameCredentialCallbackHandler
+ * DefaultCallbackHandler
+ * 
+ * An implementation of the JAAS CallbackHandler. Users can provide
+ * their own implementation instead and set the name of its class on the JAASLoginService.
  */
 public class DefaultCallbackHandler extends AbstractCallbackHandler
 {
@@ -38,9 +41,10 @@ public class DefaultCallbackHandler extends AbstractCallbackHandler
 
     public void setRequest (Request request)
     {
-        this._request = request;
+        _request = request;
     }
 
+    @Override
     public void handle (Callback[] callbacks)
         throws IOException, UnsupportedCallbackException
     {
@@ -69,6 +73,10 @@ public class DefaultCallbackHandler extends AbstractCallbackHandler
             {
                 RequestParameterCallback callback = (RequestParameterCallback)callbacks[i];
                 callback.setParameterValues(Arrays.asList(_request.getParameterValues(callback.getParameterName())));
+            }
+            else if (callbacks[i] instanceof ServletRequestCallback)
+            {
+                ((ServletRequestCallback)callbacks[i]).setRequest(_request);
             }
             else
                 throw new UnsupportedCallbackException(callbacks[i]);

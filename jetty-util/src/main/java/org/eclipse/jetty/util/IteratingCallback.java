@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,7 @@
 
 package org.eclipse.jetty.util;
 
-import java.nio.channels.ClosedChannelException;
+import java.io.IOException;
 
 import org.eclipse.jetty.util.thread.Locker;
 
@@ -403,7 +403,7 @@ public abstract class IteratingCallback implements Callback
 
     public void close()
     {
-        boolean failure=false;
+        String failure=null;
         try(Locker.Lock lock = _locker.lock())
         {
             switch (_state)
@@ -418,13 +418,13 @@ public abstract class IteratingCallback implements Callback
                     break;
 
                 default:
+                    failure=String.format("Close %s in state %s",this,_state);
                     _state=State.CLOSED;
-                    failure=true;
             }
         }
 
-        if(failure)
-            onCompleteFailure(new ClosedChannelException());
+        if(failure!=null)
+            onCompleteFailure(new IOException(failure));
     }
 
     /*

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -46,6 +46,7 @@ public class ChatServlet extends HttpServlet
 
     private long asyncTimeout = 10000;
 
+    @Override
     public void init()
     {
         String parameter = getServletConfig().getInitParameter("asyncTimeout");
@@ -111,7 +112,7 @@ public class ChatServlet extends HttpServlet
         LOG.debug("doPost called. join={},message={},username={}", join, message, username);
         if (username == null)
         {
-            LOG.debug("no paramter user set, sending 503");
+            LOG.debug("no parameter user set, sending 503");
             response.sendError(503, "user==null");
             return;
         }

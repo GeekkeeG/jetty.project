@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -62,6 +62,7 @@ public class JSONEnumConvertor implements JSON.Convertor
         _fromJSON=fromJSON;
     }
 
+    @Override
     public Object fromJSON(Map map)
     {
         if (!_fromJSON)
@@ -78,6 +79,7 @@ public class JSONEnumConvertor implements JSON.Convertor
         return null;
     }
 
+    @Override
     public void toJSON(Object obj, Output out)
     {
         if (_fromJSON)

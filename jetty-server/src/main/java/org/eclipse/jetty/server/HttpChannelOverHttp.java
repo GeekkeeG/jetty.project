@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -27,6 +27,7 @@ import java.util.List;
 import org.eclipse.jetty.http.BadMessageException;
 import org.eclipse.jetty.http.HostPortHttpField;
 import org.eclipse.jetty.http.HttpCompliance;
+import org.eclipse.jetty.http.HttpComplianceSection;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpGenerator;
@@ -50,8 +51,6 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
 {
     private static final Logger LOG = Log.getLogger(HttpChannelOverHttp.class);
     private final static HttpField PREAMBLE_UPGRADE_H2C = new HttpField(HttpHeader.UPGRADE, "h2c");
-    private static final String ATTR_COMPLIANCE_VIOLATIONS = "org.eclipse.jetty.http.compliance.violations";
-
     private final HttpFields _fields = new HttpFields();
     private final MetaData.Request _metadata = new MetaData.Request(_fields);
     private final HttpConnection _httpConnection;
@@ -249,13 +248,26 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         return handle;
     }
 
-    public void asyncReadFillInterested()
+    @Override
+    public void onAsyncWaitForContent()
     {
         _httpConnection.asyncReadFillInterested();
     }
 
     @Override
-    public void badMessage(int status, String reason)
+    public void onBlockWaitForContent()
+    {
+        _httpConnection.blockingReadFillInterested();
+    }
+
+    @Override
+    public void onBlockWaitForContentFailure(Throwable failure)
+    {
+        _httpConnection.blockingReadFailure(failure);
+    }
+
+    @Override
+    public void badMessage(BadMessageException failure)
     {
         _httpConnection.getGenerator().setPersistent(false);
         try
@@ -269,7 +281,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
             LOG.ignore(e);
         }
 
-        onBadMessage(status, reason);
+        onBadMessage(failure);
     }
 
     @Override
@@ -277,7 +289,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
     {
         if (_complianceViolations != null && !_complianceViolations.isEmpty())
         {
-            this.getRequest().setAttribute(ATTR_COMPLIANCE_VIOLATIONS, _complianceViolations);
+            this.getRequest().setAttribute(HttpCompliance.VIOLATIONS_ATTR, _complianceViolations);
             _complianceViolations=null;
         }
 
@@ -319,7 +331,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
             {
                 if (_unknownExpectation)
                 {
-                    badMessage(HttpStatus.EXPECTATION_FAILED_417, null);
+                    badMessage(new BadMessageException(HttpStatus.EXPECTATION_FAILED_417));
                     return false;
                 }
 
@@ -360,7 +372,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
                         upgrade())
                     return true;
 
-                badMessage(HttpStatus.UPGRADE_REQUIRED_426, null);
+                badMessage(new BadMessageException(HttpStatus.UPGRADE_REQUIRED_426));
                 _httpConnection.getParser().close();
                 return false;
             }
@@ -387,6 +399,17 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         return !_delayedForContent;
     }
 
+    boolean onIdleTimeout(Throwable timeout)
+    {
+        if (_delayedForContent)
+        {
+            _delayedForContent = false;
+            getRequest().getHttpInput().onIdleTimeout(timeout);
+            execute(this);
+            return false;
+        }
+        return true;
+    }
 
     /**
      * <p>Attempts to perform a HTTP/1.1 upgrade.</p>
@@ -403,7 +426,10 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         if (LOG.isDebugEnabled())
             LOG.debug("upgrade {} {}", this, _upgrade);
 
-        if (_upgrade != PREAMBLE_UPGRADE_H2C && (_connection == null || !_connection.contains("upgrade")))
+        @SuppressWarnings("ReferenceEquality")
+        boolean isUpgraded_H2C = (_upgrade == PREAMBLE_UPGRADE_H2C);
+
+        if (!isUpgraded_H2C && (_connection == null || !_connection.contains("upgrade")))
             throw new BadMessageException(HttpStatus.BAD_REQUEST_400);
 
         // Find the upgrade factory
@@ -440,7 +466,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
         // Send 101 if needed
         try
         {
-            if (_upgrade != PREAMBLE_UPGRADE_H2C)
+            if (!isUpgraded_H2C)
                 sendResponse(new MetaData.Response(HttpVersion.HTTP_1_1, HttpStatus.SWITCHING_PROTOCOLS_101, response101, 0), null, true);
         }
         catch (IOException e)
@@ -493,7 +519,7 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
     }
 
     @Override
-    public void onComplianceViolation(HttpCompliance compliance, HttpCompliance required, String reason)
+    public void onComplianceViolation(HttpCompliance compliance, HttpComplianceSection violation, String reason)
     {
         if (_httpConnection.isRecordHttpComplianceViolations())
         {
@@ -501,10 +527,11 @@ public class HttpChannelOverHttp extends HttpChannel implements HttpParser.Reque
             {
                 _complianceViolations = new ArrayList<>();
             }
-            String violation = String.format("%s<%s: %s for %s", compliance, required, reason, getHttpTransport());
-            _complianceViolations.add(violation);
+            String record = String.format("%s (see %s) in mode %s for %s in %s", 
+                violation.getDescription(), violation.getURL(), compliance, reason, getHttpTransport());
+            _complianceViolations.add(record);
             if (LOG.isDebugEnabled())
-                LOG.debug(violation);
+                LOG.debug(record);
         }
     }
 }

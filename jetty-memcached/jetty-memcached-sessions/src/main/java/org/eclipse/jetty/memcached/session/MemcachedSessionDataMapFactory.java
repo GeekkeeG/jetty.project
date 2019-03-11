@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -44,9 +44,12 @@ public class MemcachedSessionDataMapFactory implements SessionDataMapFactory
     {
         if (addresses == null)
             _addresses = null;
-        _addresses = new ArrayList<>();
-        for (InetSocketAddress a:addresses)
-            _addresses.add(a);
+        else
+        {
+            _addresses = new ArrayList<>();
+            for (InetSocketAddress a:addresses)
+                _addresses.add(a);
+        }
     }
     
     /**

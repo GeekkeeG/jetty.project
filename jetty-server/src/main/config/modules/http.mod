@@ -1,3 +1,5 @@
+DO NOT EDIT - See: https://www.eclipse.org/jetty/documentation/current/startup-modules.html
+
 [description]
 Enables a HTTP connector on the server.
 By default HTTP/1 is support, but HTTP2C can
@@ -25,9 +27,6 @@ etc/jetty-http.xml
 ## Connector idle timeout in milliseconds
 # jetty.http.idleTimeout=30000
 
-## Connector socket linger time in seconds (-1 to disable)
-# jetty.http.soLingerTime=-1
-
 ## Number of acceptors (-1 picks default based on number of cores)
 # jetty.http.acceptors=-1
 
@@ -40,5 +39,8 @@ etc/jetty-http.xml
 ## Thread priority delta to give to acceptor threads
 # jetty.http.acceptorPriorityDelta=0
 
-## HTTP Compliance: RFC7230, RFC2616, LEGACY
-# jetty.http.compliance=RFC7230
+## Connect Timeout in milliseconds
+# jetty.http.connectTimeout=15000
+
+## HTTP Compliance: RFC7230, RFC7230_LEGACY, RFC2616, RFC2616_LEGACY, LEGACY or CUSTOMn
+# jetty.http.compliance=RFC7230_LEGACY

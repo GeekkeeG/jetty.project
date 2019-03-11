@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,22 +18,20 @@
 
 package org.eclipse.jetty.websocket.jsr356.server;
 
-import static org.hamcrest.Matchers.contains;
-
 import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-
+import java.util.stream.Stream;
 import javax.websocket.ContainerProvider;
 import javax.websocket.WebSocketContainer;
 
-import org.eclipse.jetty.toolchain.test.EventQueue;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.webapp.WebAppContext;
+import org.eclipse.jetty.websocket.common.test.Timeouts;
 import org.eclipse.jetty.websocket.jsr356.server.EchoCase.PartialBinary;
 import org.eclipse.jetty.websocket.jsr356.server.EchoCase.PartialText;
 import org.eclipse.jetty.websocket.jsr356.server.samples.binary.ByteBufferSocket;
@@ -60,18 +58,20 @@ import org.eclipse.jetty.websocket.jsr356.server.samples.streaming.InputStreamSo
 import org.eclipse.jetty.websocket.jsr356.server.samples.streaming.ReaderParamSocket;
 import org.eclipse.jetty.websocket.jsr356.server.samples.streaming.ReaderSocket;
 import org.eclipse.jetty.websocket.jsr356.server.samples.streaming.StringReturnReaderParamSocket;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameters;
+import org.hamcrest.Matcher;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
-@RunWith(Parameterized.class)
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
+
 public class EchoTest
 {
-    private static final List<EchoCase[]> TESTCASES = new ArrayList<>();
+    private static final List<EchoCase> TESTCASES = new ArrayList<>();
 
     private static WSServer server;
     private static URI serverUri;
@@ -85,7 +85,7 @@ public class EchoTest
         EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage(Boolean.FALSE).expect("false");
         EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage("true").expect("true");
         EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage("TRUe").expect("true");
-        EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage("Apple").expect("false");
+        EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage("Apple").expect(null); // fails willDecode
         EchoCase.add(TESTCASES,BooleanTextSocket.class).addMessage("false").expect("false");
 
         EchoCase.add(TESTCASES,BooleanObjectTextSocket.class).addMessage(true).expect("true");
@@ -203,19 +203,21 @@ public class EchoTest
           .expect("('Built',false)(' for',false)(' the',false)(' future',true)");
     }
 
-    @BeforeClass
+    public static Stream<Arguments> echoCases()
+    {
+        return Stream.of(TESTCASES.toArray(new EchoCase[0])).map(Arguments::of);
+    }
+
+    @BeforeAll
     public static void startServer() throws Exception
     {
         File testdir = MavenTestingUtils.getTargetTestingDir(EchoTest.class.getName());
         server = new WSServer(testdir,"app");
         server.copyWebInf("empty-web.xml");
 
-        for (EchoCase cases[] : TESTCASES)
+        for (EchoCase ecase : TESTCASES)
         {
-            for (EchoCase ecase : cases)
-            {
-                server.copyClass(ecase.serverPojo);
-            }
+            server.copyClass(ecase.serverPojo);
         }
 
         server.start();
@@ -225,37 +227,24 @@ public class EchoTest
         server.deployWebapp(webapp);
     }
 
-    @BeforeClass
+    @BeforeAll
     public static void startClient() throws Exception
     {
         client = ContainerProvider.getWebSocketContainer();
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         server.stop();
     }
 
-    @Parameters
-    public static Collection<EchoCase[]> data() throws Exception
-    {
-        return TESTCASES;
-    }
-
-    private EchoCase testcase;
-
-    public EchoTest(EchoCase testcase)
-    {
-        this.testcase = testcase;
-        System.err.println(testcase);
-    }
-
-    @Test(timeout=2000)
-    public void testEcho() throws Exception
+    @ParameterizedTest
+    @MethodSource("echoCases")
+    public void testEcho(EchoCase testcase) throws Exception
     {
         int messageCount = testcase.getMessageCount();
-        EchoClientSocket socket = new EchoClientSocket(messageCount);
+        EchoClientSocket socket = new EchoClientSocket();
         URI toUri = serverUri.resolve(testcase.path.substring(1));
 
         try
@@ -284,13 +273,14 @@ public class EchoTest
             }
 
             // Collect Responses
-            socket.awaitAllEvents(1,TimeUnit.SECONDS);
-            EventQueue<String> received = socket.eventQueue;
+            LinkedBlockingQueue<String> received = socket.eventQueue;
 
             // Validate Responses
             for (String expected : testcase.expectedStrings)
             {
-                Assert.assertThat("Received Echo Responses",received,contains(expected));
+                String actual = received.poll(Timeouts.POLL_EVENT, Timeouts.POLL_EVENT_UNIT);
+                Matcher expectation = expected == null ? nullValue() : containsString(expected);
+                assertThat("Received Echo Responses", actual, expectation);
             }
         }
         finally

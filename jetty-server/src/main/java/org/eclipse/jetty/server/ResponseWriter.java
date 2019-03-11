@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -452,16 +452,30 @@ public class ResponseWriter extends PrintWriter
     }
 
     @Override
-    public PrintWriter format(Locale l, String format, Object... args)
+    public PrintWriter format(Locale locale, String format, Object... args)
     { 
         try 
         {
+            
+            /* If the passed locale is null then 
+            use any locale set on the response as the default. */
+            if(locale == null) 
+                locale = _locale;
+            
             synchronized (lock) 
             {
                 isOpen();
-                if ((_formatter == null) || (_formatter.locale() != l))
-                    _formatter = new Formatter(this, l);
-                _formatter.format(l, format, args);
+
+                if(_formatter == null)
+                {
+                    _formatter = new Formatter(this, locale);
+                } 
+                else if (!_formatter.locale().equals(locale))
+                {
+                    _formatter = new Formatter(this, locale);
+                }
+                
+                _formatter.format(locale, format, args);
             }
         } 
         catch (InterruptedIOException ex)

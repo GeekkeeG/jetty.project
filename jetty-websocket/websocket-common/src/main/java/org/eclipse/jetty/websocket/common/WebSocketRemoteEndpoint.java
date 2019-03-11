@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -221,6 +221,7 @@ public class WebSocketRemoteEndpoint implements RemoteEndpoint
      *
      * @return the InetSocketAddress for the established connection. (or null, if the connection is no longer established)
      */
+    @Override
     public InetSocketAddress getInetSocketAddress()
     {
         if(connection == null)
@@ -250,7 +251,6 @@ public class WebSocketRemoteEndpoint implements RemoteEndpoint
         lockMsg(MsgType.BLOCKING);
         try
         {
-            connection.getIOState().assertOutputOpen();
             if (LOG.isDebugEnabled())
             {
                 LOG.debug("sendBytes with {}", BufferUtil.toDetailString(data));
@@ -301,18 +301,10 @@ public class WebSocketRemoteEndpoint implements RemoteEndpoint
 
     public void uncheckedSendFrame(WebSocketFrame frame, WriteCallback callback)
     {
-        try
-        {
-            BatchMode batchMode = BatchMode.OFF;
-            if (frame.isDataFrame())
-                batchMode = getBatchMode();
-            connection.getIOState().assertOutputOpen();
-            outgoing.outgoingFrame(frame, callback, batchMode);
-        }
-        catch (IOException e)
-        {
-            callback.writeFailed(e);
-        }
+        BatchMode batchMode = BatchMode.OFF;
+        if (frame.isDataFrame())
+            batchMode = getBatchMode();
+        outgoing.outgoingFrame(frame, callback, batchMode);
     }
 
     @Override

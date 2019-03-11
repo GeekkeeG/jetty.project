@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -58,6 +58,7 @@ public class MimeTypes
         FORM_ENCODED("application/x-www-form-urlencoded"),
         MESSAGE_HTTP("message/http"),
         MULTIPART_BYTERANGES("multipart/byteranges"),
+        MULTIPART_FORM_DATA("multipart/form-data"),
 
         TEXT_HTML("text/html"),
         TEXT_PLAIN("text/plain"),
@@ -350,8 +351,7 @@ public class MimeTypes
 
         if (type==null)
         {
-            if (type==null)
-                type=__dftMimeMap.get("*");
+            type=__dftMimeMap.get("*");
         }
 
         return type;
@@ -516,7 +516,7 @@ public class MimeTypes
      */
     public static Map<String,String> getAssumedEncodings()
     {
-        return __inferredEncodings;
+        return __assumedEncodings;
     }
 
     @Deprecated

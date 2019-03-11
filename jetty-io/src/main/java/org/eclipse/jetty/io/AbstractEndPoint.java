@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -62,6 +62,8 @@ public abstract class AbstractEndPoint extends IdleTimeout implements EndPoint
 
     protected final void shutdownInput()
     {
+        if (LOG.isDebugEnabled())
+            LOG.debug("shutdownInput {}",this);
         while(true)
         {
             State s = _state.get();
@@ -114,6 +116,8 @@ public abstract class AbstractEndPoint extends IdleTimeout implements EndPoint
     @Override
     public final void shutdownOutput()
     {
+        if (LOG.isDebugEnabled())
+            LOG.debug("shutdownOutput {}",this);
         while(true)
         {
             State s = _state.get();
@@ -166,11 +170,15 @@ public abstract class AbstractEndPoint extends IdleTimeout implements EndPoint
     @Override
     public final void close()
     {
+        if (LOG.isDebugEnabled())
+            LOG.debug("close {}",this);
         close(null);
     }
 
     protected final void close(Throwable failure)
     {
+        if (LOG.isDebugEnabled())
+            LOG.debug("close({}) {}",failure,this);
         while(true)
         {
             State s = _state.get();
@@ -419,15 +427,16 @@ public abstract class AbstractEndPoint extends IdleTimeout implements EndPoint
         if (LOG.isDebugEnabled())
             LOG.debug("{} upgrading from {} to {}", this, old_connection, newConnection);
 
-        ByteBuffer prefilled = (old_connection instanceof Connection.UpgradeFrom)
-                ?((Connection.UpgradeFrom)old_connection).onUpgradeFrom():null;
+        ByteBuffer buffer = (old_connection instanceof Connection.UpgradeFrom) ?
+                ((Connection.UpgradeFrom)old_connection).onUpgradeFrom() :
+                null;
         old_connection.onClose();
         old_connection.getEndPoint().setConnection(newConnection);
 
         if (newConnection instanceof Connection.UpgradeTo)
-            ((Connection.UpgradeTo)newConnection).onUpgradeTo(prefilled);
-        else if (BufferUtil.hasContent(prefilled))
-            throw new IllegalStateException();
+            ((Connection.UpgradeTo)newConnection).onUpgradeTo(buffer);
+        else if (BufferUtil.hasContent(buffer))
+            throw new IllegalStateException("Cannot upgrade: " + newConnection + " does not implement " + Connection.UpgradeTo.class.getName());
 
         newConnection.onOpen();
     }

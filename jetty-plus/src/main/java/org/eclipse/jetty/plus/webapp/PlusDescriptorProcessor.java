@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -73,6 +73,7 @@ public class PlusDescriptorProcessor extends IterativeDescriptorProcessor
     /**
      * @see org.eclipse.jetty.webapp.IterativeDescriptorProcessor#start(WebAppContext, org.eclipse.jetty.webapp.Descriptor)
      */
+    @Override
     public void start(WebAppContext context, Descriptor descriptor)
     {
 
@@ -102,6 +103,7 @@ public class PlusDescriptorProcessor extends IterativeDescriptorProcessor
     /**
      * {@inheritDoc}
      */
+    @Override
     public void end(WebAppContext context,Descriptor descriptor)
     {
     }
@@ -677,7 +679,7 @@ public class PlusDescriptorProcessor extends IterativeDescriptorProcessor
                 }
                 catch (ClassNotFoundException e)
                 {
-                    LOG.warn("Couldn't load pre-destory target class "+className);
+                    LOG.warn("Couldn't load pre-destroy target class "+className);
                 }
                 break;
             }
@@ -698,7 +700,7 @@ public class PlusDescriptorProcessor extends IterativeDescriptorProcessor
                     }
                     catch (ClassNotFoundException e)
                     {
-                        LOG.warn("Couldn't load pre-destory target class "+className);
+                        LOG.warn("Couldn't load pre-destroy target class "+className);
                     }
                 }
                 break;
@@ -715,7 +717,7 @@ public class PlusDescriptorProcessor extends IterativeDescriptorProcessor
                 }
                 catch (ClassNotFoundException e)
                 {
-                    LOG.warn("Couldn't load pre-destory target class "+className);
+                    LOG.warn("Couldn't load pre-destroy target class "+className);
                 }
                 break;
             }

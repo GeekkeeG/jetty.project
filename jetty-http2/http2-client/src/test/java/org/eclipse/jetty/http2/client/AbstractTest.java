@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,6 +28,7 @@ import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.http.MetaData;
+import org.eclipse.jetty.http2.FlowControlStrategy;
 import org.eclipse.jetty.http2.api.Session;
 import org.eclipse.jetty.http2.api.server.ServerSessionListener;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
@@ -38,16 +39,12 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.toolchain.test.TestTracker;
 import org.eclipse.jetty.util.FuturePromise;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.After;
-import org.junit.Rule;
+import org.junit.jupiter.api.AfterEach;
 
 public class AbstractTest
 {
-    @Rule
-    public TestTracker tracker = new TestTracker();
     protected ServerConnector connector;
     protected String servletPath = "/test";
     protected HTTP2Client client;
@@ -55,7 +52,10 @@ public class AbstractTest
 
     protected void start(HttpServlet servlet) throws Exception
     {
-        prepareServer(new HTTP2ServerConnectionFactory(new HttpConfiguration()));
+        HTTP2ServerConnectionFactory connectionFactory = new HTTP2ServerConnectionFactory(new HttpConfiguration());
+        connectionFactory.setInitialSessionRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        connectionFactory.setInitialStreamRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        prepareServer(connectionFactory);
         ServletContextHandler context = new ServletContextHandler(server, "/", true, false);
         context.addServlet(new ServletHolder(servlet), servletPath + "/*");
         customizeContext(context);
@@ -71,7 +71,10 @@ public class AbstractTest
 
     protected void start(ServerSessionListener listener) throws Exception
     {
-        prepareServer(new RawHTTP2ServerConnectionFactory(new HttpConfiguration(), listener));
+        RawHTTP2ServerConnectionFactory connectionFactory = new RawHTTP2ServerConnectionFactory(new HttpConfiguration(), listener);
+        connectionFactory.setInitialSessionRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        connectionFactory.setInitialStreamRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        prepareServer(connectionFactory);
         server.start();
 
         prepareClient();
@@ -93,6 +96,8 @@ public class AbstractTest
         QueuedThreadPool clientExecutor = new QueuedThreadPool();
         clientExecutor.setName("client");
         client.setExecutor(clientExecutor);
+        client.setInitialSessionRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        client.setInitialStreamRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
     }
 
     protected Session newClient(Session.Listener listener) throws Exception
@@ -118,7 +123,7 @@ public class AbstractTest
         return new MetaData.Request(method, HttpScheme.HTTP, new HostPortHttpField(authority), servletPath + pathInfo, HttpVersion.HTTP_2, fields);
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         if (client != null)

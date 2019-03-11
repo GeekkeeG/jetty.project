@@ -1,3 +1,5 @@
+DO NOT EDIT - See: https://www.eclipse.org/jetty/documentation/current/startup-modules.html
+
 [description]
 Provides ALPN support for JDK 8, modifying the sun.security.ssl
 classes and adding them to the JVM boot classpath.
@@ -12,10 +14,13 @@ specific version of Java.
 #            Java versions.
 #
 # All versions of the alpn-boot jar can be found at
-# http://central.maven.org/maven2/org/mortbay/jetty/alpn/alpn-boot/
+# https://repo1.maven.org/maven2/org/mortbay/jetty/alpn/alpn-boot/
 
 [depend]
 alpn-impl/alpn-${java.version}
+
+[lib]
+lib/jetty-alpn-openjdk8-server-${jetty.version}.jar
 
 [files]
 lib/

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,11 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 
@@ -38,7 +38,7 @@ import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * RemoveSessionTest
@@ -80,9 +80,8 @@ public class RemoveSessionTest
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
                 assertTrue(sessionCookie != null);
-                // Mangle the cookie, replacing Path with $Path, etc.
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
-                //ensure sessionCreated listener is called
+
+                //ensure sessionCreated bindingListener is called
                 assertTrue (testListener.isCreated());
                 assertEquals(1, m.getSessionsCreated());
                 assertEquals(1, ((DefaultSessionCache)m.getSessionCache()).getSessionsMax());
@@ -90,10 +89,9 @@ public class RemoveSessionTest
                 
                 //now delete the session
                 Request request = client.newRequest("http://localhost:" + port + contextPath + servletMapping + "?action=delete");
-                request.header("Cookie", sessionCookie);
                 response = request.send();
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
-                //ensure sessionDestroyed listener is called
+                //ensure sessionDestroyed bindingListener is called
                 assertTrue(testListener.isDestroyed());
                 assertEquals(0, ((DefaultSessionCache)m.getSessionCache()).getSessionsCurrent());
                 assertEquals(1, ((DefaultSessionCache)m.getSessionCache()).getSessionsMax());
@@ -104,7 +102,6 @@ public class RemoveSessionTest
 
                 // The session is not there anymore, even if we present an old cookie
                 request = client.newRequest("http://localhost:" + port + contextPath + servletMapping + "?action=check");
-                request.header("Cookie", sessionCookie);
                 response = request.send();
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 assertEquals(0, ((DefaultSessionCache)m.getSessionCache()).getSessionsCurrent());
@@ -124,6 +121,8 @@ public class RemoveSessionTest
     }
     public static class TestServlet extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
             String action = request.getParameter("action");
@@ -152,11 +151,13 @@ public class RemoveSessionTest
         boolean wasCreated;
         boolean wasDestroyed;
 
+        @Override
         public void sessionCreated(HttpSessionEvent se)
         {
             wasCreated = true;
         }
 
+        @Override
         public void sessionDestroyed(HttpSessionEvent se)
         {
            wasDestroyed = true;

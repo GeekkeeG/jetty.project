@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -39,6 +39,7 @@ import java.util.EventListener;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.servlet.AsyncContext;
@@ -67,6 +68,7 @@ import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpHeaderValue;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpStatus;
@@ -74,6 +76,7 @@ import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.http.MetaData;
 import org.eclipse.jetty.http.MimeTypes;
+import org.eclipse.jetty.io.RuntimeIOException;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandler.Context;
 import org.eclipse.jetty.server.session.Session;
@@ -82,7 +85,6 @@ import org.eclipse.jetty.util.Attributes;
 import org.eclipse.jetty.util.AttributesMap;
 import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.MultiMap;
-import org.eclipse.jetty.util.MultiPartInputStreamParser;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.URIUtil;
 import org.eclipse.jetty.util.UrlEncoded;
@@ -125,18 +127,32 @@ import org.eclipse.jetty.util.log.Logger;
  * {@link ContextHandler#getMaxFormContentSize()} or if there is no context then the "org.eclipse.jetty.server.Request.maxFormContentSize" {@link Server}
  * attribute. The number of parameters keys is limited by {@link ContextHandler#getMaxFormKeys()} or if there is no context then the
  * "org.eclipse.jetty.server.Request.maxFormKeys" {@link Server} attribute.
+ * </p>
+ * <p>If IOExceptions or timeouts occur while reading form parameters, these are thrown as unchecked Exceptions: ether {@link RuntimeIOException},
+ * {@link BadMessageException} or {@link RuntimeException} as appropriate.</p>
  */
 public class Request implements HttpServletRequest
 {
     public static final String __MULTIPART_CONFIG_ELEMENT = "org.eclipse.jetty.multipartConfig";
-    public static final String __MULTIPART_INPUT_STREAM = "org.eclipse.jetty.multiPartInputStream";
-    public static final String __MULTIPART_CONTEXT = "org.eclipse.jetty.multiPartContext";
+    public static final String __MULTIPARTS = "org.eclipse.jetty.multiParts";
 
     private static final Logger LOG = Log.getLogger(Request.class);
     private static final Collection<Locale> __defaultLocale = Collections.singleton(Locale.getDefault());
     private static final int __NONE = 0, _STREAM = 1, __READER = 2;
 
     private static final MultiMap<String> NO_PARAMS = new MultiMap<>();
+
+    /* ------------------------------------------------------------ */
+    /**
+     * Compare inputParameters to NO_PARAMS by Reference
+     * @param inputParameters The parameters to compare to NO_PARAMS
+     * @return True if the inputParameters reference is equal to NO_PARAMS otherwise False
+     */
+    private static boolean isNoParams(MultiMap<String> inputParameters) {
+        @SuppressWarnings("ReferenceEquality")
+        boolean is_no_params = (inputParameters==NO_PARAMS);
+        return is_no_params;
+    }
 
     /* ------------------------------------------------------------ */
     /**
@@ -197,9 +213,8 @@ public class Request implements HttpServletRequest
     private HttpSession _session;
     private SessionHandler _sessionHandler;
     private long _timeStamp;
-    private MultiPartInputStreamParser _multiPartInputStream; //if the request is a multi-part mime
+    private MultiParts _multiParts; //if the request is a multi-part mime
     private AsyncContextState _async;
-    private HttpFields _trailers;
 
     /* ------------------------------------------------------------ */
     public Request(HttpChannel channel, HttpInput input)
@@ -215,9 +230,12 @@ public class Request implements HttpServletRequest
         return metadata==null?null:metadata.getFields();
     }
 
+    /* ------------------------------------------------------------ */
     public HttpFields getTrailers()
     {
-        return _trailers;
+        MetaData.Request metadata=_metaData;
+        Supplier<HttpFields> trailers = metadata==null?null:metadata.getTrailerSupplier();
+        return trailers==null?null:trailers.get();
     }
 
     /* ------------------------------------------------------------ */
@@ -278,7 +296,7 @@ public class Request implements HttpServletRequest
     public PushBuilder getPushBuilder()
     {
         if (!isPushSupported())
-            throw new IllegalStateException(String.format("%s,push=%b,channel=%s", this, isPush(), getHttpChannel()));
+            return null;
 
         HttpFields fields = new HttpFields(getHttpFields().size()+5);
         boolean conditional=false;
@@ -353,7 +371,7 @@ public class Request implements HttpServletRequest
     /* ------------------------------------------------------------ */
     private MultiMap<String> getParameters()
     {
-        if (!_contentParamsExtracted) 
+        if (!_contentParamsExtracted)
         {
             // content parameters need boolean protection as they can only be read
             // once, but may be reset to null by a reset
@@ -390,11 +408,11 @@ public class Request implements HttpServletRequest
         }
 
         // Do parameters need to be combined?
-        if (_queryParameters==NO_PARAMS || _queryParameters.size()==0)
+        if (isNoParams(_queryParameters) || _queryParameters.size()==0)
             _parameters=_contentParameters;
-        else if (_contentParameters==NO_PARAMS || _contentParameters.size()==0)
+        else if (isNoParams(_contentParameters) || _contentParameters.size()==0)
             _parameters=_queryParameters;
-        else
+        else if(_parameters == null)
         {
             _parameters = new MultiMap<>();
             _parameters.addAllValues(_queryParameters);
@@ -444,24 +462,39 @@ public class Request implements HttpServletRequest
         else
         {
             _contentParameters=new MultiMap<>();
-            contentType = HttpFields.valueParameters(contentType, null);
             int contentLength = getContentLength();
-            if (contentLength != 0)
+            if (contentLength != 0 && _inputState == __NONE)
             {
-                if (MimeTypes.Type.FORM_ENCODED.is(contentType) && _inputState == __NONE &&
+                contentType = HttpFields.valueParameters(contentType, null);
+                if (MimeTypes.Type.FORM_ENCODED.is(contentType) &&
                     _channel.getHttpConfiguration().isFormEncodedMethod(getMethod()))
                 {
+                    if (_metaData!=null)
+                    {
+                        String contentEncoding = getHttpFields().get(HttpHeader.CONTENT_ENCODING);
+                        if (contentEncoding!=null && !HttpHeaderValue.IDENTITY.is(contentEncoding))
+                            throw new BadMessageException(HttpStatus.NOT_IMPLEMENTED_501, "Unsupported Content-Encoding");
+                    }
                     extractFormParameters(_contentParameters);
                 }
-                else if (contentType.startsWith("multipart/form-data") &&
+                else if (MimeTypes.Type.MULTIPART_FORM_DATA.is(contentType) &&
                         getAttribute(__MULTIPART_CONFIG_ELEMENT) != null &&
-                        _multiPartInputStream == null)
+                        _multiParts == null)
                 {
-                    extractMultipartParameters(_contentParameters);
+                    try
+                    {
+                        if (_metaData!=null && getHttpFields().contains(HttpHeader.CONTENT_ENCODING))
+                            throw new BadMessageException(HttpStatus.NOT_IMPLEMENTED_501,"Unsupported Content-Encoding");
+                        getParts(_contentParameters);
+                    }
+                    catch (IOException | ServletException e)
+                    {
+                        LOG.debug(e);
+                        throw new RuntimeIOException(e);
+                    }
                 }
             }
         }
-
     }
 
     /* ------------------------------------------------------------ */
@@ -490,7 +523,7 @@ public class Request implements HttpServletRequest
                 }
                 else if (obj instanceof String)
                 {
-                    maxFormContentSize = Integer.valueOf((String)obj);
+                    maxFormContentSize = Integer.parseInt((String)obj);
                 }
             }
 
@@ -506,7 +539,7 @@ public class Request implements HttpServletRequest
                 }
                 else if (obj instanceof String)
                 {
-                    maxFormKeys = Integer.valueOf((String)obj);
+                    maxFormKeys = Integer.parseInt((String)obj);
                 }
             }
 
@@ -523,24 +556,8 @@ public class Request implements HttpServletRequest
         }
         catch (IOException e)
         {
-            if (LOG.isDebugEnabled())
-                LOG.warn(e);
-            else
-                LOG.warn(e.toString());
-        }
-    }
-
-    /* ------------------------------------------------------------ */
-    private void extractMultipartParameters(MultiMap<String> result)
-    {
-        try
-        {
-            getParts(result);
-        }
-        catch (IOException | ServletException e)
-        {
-            LOG.warn(e);
-            throw new RuntimeException(e);
+            LOG.debug(e);
+            throw new RuntimeIOException(e);
         }
     }
 
@@ -752,12 +769,15 @@ public class Request implements HttpServletRequest
         }
 
         _cookiesExtracted = true;
-        
-        for (String c : metadata.getFields().getValuesList(HttpHeader.COOKIE))
+
+        for (HttpField field : metadata.getFields())
         {
-            if (_cookies == null)
-                _cookies = new CookieCutter();
-            _cookies.addCookieField(c);
+            if (field.getHeader()==HttpHeader.COOKIE)
+            {
+                if (_cookies==null)
+                    _cookies = new CookieCutter(getHttpChannel().getHttpConfiguration().getRequestCookieCompliance());
+                _cookies.addCookieField(field.getValue());
+            }
         }
 
         //Javadoc for Request.getCookies() stipulates null for no cookies
@@ -1283,7 +1303,7 @@ public class Request implements HttpServletRequest
                 relTo = relTo.substring(0,slash + 1);
             else
                 relTo = "/";
-            path = URIUtil.addPaths(URIUtil.encodePath(relTo),path);
+            path = URIUtil.addPaths(relTo,path);
         }
 
         return _context.getRequestDispatcher(path);
@@ -1507,7 +1527,7 @@ public class Request implements HttpServletRequest
             if (getRemoteUser() != null)
                 s.setAttribute(Session.SESSION_CREATED_SECURE, Boolean.TRUE);
             if (s.isIdChanged() && _sessionHandler.isUsingCookies())
-                _channel.getResponse().addCookie(_sessionHandler.getSessionCookie(s, getContextPath(), isSecure()));
+                _channel.getResponse().replaceCookie(_sessionHandler.getSessionCookie(s, getContextPath(), isSecure()));
         }
 
         return session.getId();
@@ -1550,7 +1570,7 @@ public class Request implements HttpServletRequest
         _session = _sessionHandler.newHttpSession(this);
         HttpCookie cookie = _sessionHandler.getSessionCookie(_session,getContextPath(),isSecure());
         if (cookie != null)
-            _channel.getResponse().addCookie(cookie);
+            _channel.getResponse().replaceCookie(cookie);
 
         return _session;
     }
@@ -1754,47 +1774,38 @@ public class Request implements HttpServletRequest
      */
     public void setMetaData(org.eclipse.jetty.http.MetaData.Request request)
     {
-        _metaData=request;
+        _metaData = request;
         
         setMethod(request.getMethod());
         HttpURI uri = request.getURI();
-        _originalURI=uri.isAbsolute()&&request.getHttpVersion()!=HttpVersion.HTTP_2?uri.toString():uri.getPathQuery();
+        _originalURI = uri.isAbsolute()&&request.getHttpVersion()!=HttpVersion.HTTP_2?uri.toString():uri.getPathQuery();
 
-        String path = uri.getDecodedPath();
-        String info;
-        if (path==null || path.length()==0)
+        String encoded = uri.getPath();
+        String path;
+        if (encoded==null)
         {
-            if (uri.isAbsolute())
-            {
-                path="/";
-                uri.setPath(path);
-            }
-            else
-            {
-                setPathInfo("");
-                throw new BadMessageException(400,"Bad URI");
-            }
-            info=path;
+            path = uri.isAbsolute()?"/":null;
+            uri.setPath(path);
         }
-        else if (!path.startsWith("/"))
+        else if (encoded.startsWith("/"))
         {
-            if (!"*".equals(path) && !HttpMethod.CONNECT.is(getMethod()))
-            {
-                setPathInfo(path);
-                throw new BadMessageException(400,"Bad URI");
-            }
-            info=path;
+            path = (encoded.length()==1)?"/":URIUtil.canonicalPath(URIUtil.decodePath(encoded));
+        }
+        else if ("*".equals(encoded) || HttpMethod.CONNECT.is(getMethod()))
+        {
+            path = encoded;
         }
         else
-            info = URIUtil.canonicalPath(path);// TODO should this be done prior to decoding???
-
-        if (info == null)
         {
-            setPathInfo(path);
-            throw new BadMessageException(400,"Bad URI");
+            path = null;
         }
 
-        setPathInfo(info);
+        if (path==null || path.isEmpty())
+        {
+            setPathInfo(encoded==null?"":encoded);
+            throw new BadMessageException(400,"Bad URI");
+        }
+        setPathInfo(path);
     }
 
     /* ------------------------------------------------------------ */
@@ -1865,10 +1876,9 @@ public class Request implements HttpServletRequest
         _parameters = null;
         _contentParamsExtracted = false;
         _inputState = __NONE;
-        _multiPartInputStream = null;
+        _multiParts = null;
         _remote=null;
         _input.recycle();
-        _trailers = null;
     }
 
     /* ------------------------------------------------------------ */
@@ -2052,7 +2062,7 @@ public class Request implements HttpServletRequest
     public void setCookies(Cookie[] cookies)
     {
         if (_cookies == null)
-            _cookies = new CookieCutter();
+            _cookies = new CookieCutter(getHttpChannel().getHttpConfiguration().getRequestCookieCompliance());
         _cookies.setCookies(cookies);
     }
 
@@ -2237,11 +2247,6 @@ public class Request implements HttpServletRequest
         _scope = scope;
     }
 
-    public void setTrailers(HttpFields trailers)
-    {
-        _trailers = trailers;
-    }
-
     /* ------------------------------------------------------------ */
     @Override
     public AsyncContext startAsync() throws IllegalStateException
@@ -2267,7 +2272,15 @@ public class Request implements HttpServletRequest
             _async=new AsyncContextState(state);
         AsyncContextEvent event = new AsyncContextEvent(_context,_async,state,this,servletRequest,servletResponse);
         event.setDispatchContext(getServletContext());
-        event.setDispatchPath(URIUtil.encodePath(URIUtil.addPaths(getServletPath(),getPathInfo())));
+        
+        String uri = ((HttpServletRequest)servletRequest).getRequestURI();
+        if (_contextPath!=null && uri.startsWith(_contextPath))
+            uri = uri.substring(_contextPath.length());
+        else
+            // TODO probably need to strip encoded context from requestURI, but will do this for now:
+            uri = URIUtil.encodePath(URIUtil.addPaths(getServletPath(),getPathInfo()));  
+        
+        event.setDispatchPath(uri);
         state.startAsync(event);
         return _async;
     }
@@ -2304,64 +2317,115 @@ public class Request implements HttpServletRequest
     {
         getParts();
 
-        return _multiPartInputStream.getPart(name);
+        return _multiParts.getPart(name);
     }
 
     /* ------------------------------------------------------------ */
     @Override
     public Collection<Part> getParts() throws IOException, ServletException
     {
-        if (getContentType() == null || !getContentType().startsWith("multipart/form-data"))
+        if (getContentType() == null || 
+                !MimeTypes.Type.MULTIPART_FORM_DATA.is(HttpFields.valueParameters(getContentType(),null)))
             throw new ServletException("Content-Type != multipart/form-data");
         return getParts(null);
     }
 
     private Collection<Part> getParts(MultiMap<String> params) throws IOException, ServletException
-    {
-        if (_multiPartInputStream == null)
-            _multiPartInputStream = (MultiPartInputStreamParser)getAttribute(__MULTIPART_INPUT_STREAM);
+    {        
+        if (_multiParts == null)
+            _multiParts = (MultiParts)getAttribute(__MULTIPARTS);
 
-        if (_multiPartInputStream == null)
+        if (_multiParts == null)
         {
             MultipartConfigElement config = (MultipartConfigElement)getAttribute(__MULTIPART_CONFIG_ELEMENT);
-
             if (config == null)
                 throw new IllegalStateException("No multipart config for servlet");
 
-            _multiPartInputStream = new MultiPartInputStreamParser(getInputStream(),
-                                                             getContentType(), config,
-                                                             (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null));
+            _multiParts = newMultiParts(getInputStream(),
+                                       getContentType(), config,
+                                       (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null));
 
-            setAttribute(__MULTIPART_INPUT_STREAM, _multiPartInputStream);
-            setAttribute(__MULTIPART_CONTEXT, _context);
-            Collection<Part> parts = _multiPartInputStream.getParts(); //causes parsing
+            setAttribute(__MULTIPARTS, _multiParts);
+            Collection<Part> parts = _multiParts.getParts(); //causes parsing
+                       
+            String _charset_ = null;
+            Part charsetPart = _multiParts.getPart("_charset_");
+            if(charsetPart != null)
+            {
+                try (InputStream is = charsetPart.getInputStream())
+                {
+                    ByteArrayOutputStream os = new ByteArrayOutputStream();
+                    IO.copy(is, os);
+                    _charset_ = new String(os.toByteArray(),StandardCharsets.UTF_8);
+                }
+            }
+
+            /*
+            Select Charset to use for this part. (NOTE: charset behavior is for the part value only and not the part header/field names)
+                1. Use the part specific charset as provided in that part's Content-Type header; else
+                2. Use the overall default charset. Determined by:
+                    a. if part name _charset_ exists, use that part's value.
+                    b. if the request.getCharacterEncoding() returns a value, use that.
+                        (note, this can be either from the charset field on the request Content-Type
+                        header, or from a manual call to request.setCharacterEncoding())
+                    c. use utf-8.
+             */
+            Charset defaultCharset;
+            if (_charset_ != null)
+                defaultCharset = Charset.forName(_charset_);
+            else if (getCharacterEncoding() != null)
+                defaultCharset = Charset.forName(getCharacterEncoding());
+            else
+                defaultCharset = StandardCharsets.UTF_8;
+            
             ByteArrayOutputStream os = null;
             for (Part p:parts)
             {
-                MultiPartInputStreamParser.MultiPart mp = (MultiPartInputStreamParser.MultiPart)p;
-                if (mp.getContentDispositionFilename() == null)
+                if (p.getSubmittedFileName() == null)
                 {
                     // Servlet Spec 3.0 pg 23, parts without filename must be put into params.
                     String charset = null;
-                    if (mp.getContentType() != null)
-                        charset = MimeTypes.getCharsetFromContentType(mp.getContentType());
+                    if (p.getContentType() != null)
+                        charset = MimeTypes.getCharsetFromContentType(p.getContentType());
 
-                    try (InputStream is = mp.getInputStream())
+                    try (InputStream is = p.getInputStream())
                     {
                         if (os == null)
                             os = new ByteArrayOutputStream();
                         IO.copy(is, os);
-                        String content=new String(os.toByteArray(),charset==null?StandardCharsets.UTF_8:Charset.forName(charset));
+                        
+                        String content=new String(os.toByteArray(),charset==null?defaultCharset:Charset.forName(charset));
                         if (_contentParameters == null)
                             _contentParameters = params == null ? new MultiMap<>() : params;
-                        _contentParameters.add(mp.getName(), content);
+                        _contentParameters.add(p.getName(), content);
                     }
                     os.reset();
                 }
             }
         }
 
-        return _multiPartInputStream.getParts();
+        return _multiParts.getParts();
+    }
+
+    
+    private MultiParts newMultiParts(ServletInputStream inputStream, String contentType, MultipartConfigElement config, Object object) throws IOException
+    {
+        MultiPartFormDataCompliance compliance = getHttpChannel().getHttpConfiguration().getMultipartFormDataCompliance();
+        if(LOG.isDebugEnabled())
+            LOG.debug("newMultiParts {} {}",compliance, this);
+        
+        switch(compliance)
+        {
+            case RFC7578:
+                return new MultiParts.MultiPartsHttpParser(getInputStream(), getContentType(), config,
+                        (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null), this);
+                
+            case LEGACY: 
+            default:
+                return new MultiParts.MultiPartsUtilParser(getInputStream(), getContentType(), config,
+                    (_context != null?(File)_context.getAttribute("javax.servlet.context.tempdir"):null), this);
+                        
+        }
     }
 
     /* ------------------------------------------------------------ */
@@ -2392,8 +2456,6 @@ public class Request implements HttpServletRequest
     /* ------------------------------------------------------------ */
     public void mergeQueryParameters(String oldQuery,String newQuery, boolean updateQueryString)
     {
-        // TODO  This is seriously ugly
-
         MultiMap<String> newQueryParams = null;
         // Have to assume ENCODING because we can't know otherwise.
         if (newQuery!=null)
@@ -2406,7 +2468,14 @@ public class Request implements HttpServletRequest
         if (oldQueryParams == null && oldQuery != null)
         {
             oldQueryParams = new MultiMap<>();
-            UrlEncoded.decodeTo(oldQuery, oldQueryParams, getQueryEncoding());
+            try
+            {
+                UrlEncoded.decodeTo(oldQuery, oldQueryParams, getQueryEncoding()); 
+            }
+            catch(Throwable th)
+            {
+                throw new BadMessageException(400,"Bad query encoding",th);
+            }
         }
 
         MultiMap<String> mergedQueryParams;

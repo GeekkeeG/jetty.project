@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -59,9 +59,9 @@ public class JettyHttpServer extends com.sun.net.httpserver.HttpServer
     private InetSocketAddress _addr;
 
 
-    private Map<String, JettyHttpContext> _contexts = new HashMap<String, JettyHttpContext>();
+    private Map<String, JettyHttpContext> _contexts = new HashMap<>();
 
-    private Map<String, Connector> _connectors = new HashMap<String, Connector>();
+    private Map<String, Connector> _connectors = new HashMap<>();
 
 
     public JettyHttpServer(Server server, boolean shared)
@@ -84,13 +84,14 @@ public class JettyHttpServer extends com.sun.net.httpserver.HttpServer
     @Override
     public void bind(InetSocketAddress addr, int backlog) throws IOException
     {
+        this._addr = addr;
         // check if there is already a connector listening
         Collection<NetworkConnector> connectors = _server.getBeans(NetworkConnector.class);
         if (connectors != null)
         {
             for (NetworkConnector connector : connectors)
             {
-                if (connector.getPort() == addr.getPort()) {
+                if (connector.getPort() == addr.getPort()||connector.getLocalPort() == addr.getPort()) {
                     if (LOG.isDebugEnabled()) LOG.debug("server already bound to port " + addr.getPort() + ", no need to rebind");
                     return;
                 }
@@ -100,15 +101,21 @@ public class JettyHttpServer extends com.sun.net.httpserver.HttpServer
         if (_serverShared)
             throw new IOException("jetty server is not bound to port " + addr.getPort());
 
-        this._addr = addr;
+
 
         if (LOG.isDebugEnabled()) LOG.debug("binding server to port " + addr.getPort());
         ServerConnector connector = new ServerConnector(_server);
         connector.setPort(addr.getPort());
         connector.setHost(addr.getHostName());
+
         _server.addConnector(connector);
 
         _connectors.put(addr.getHostName() + addr.getPort(), connector);
+    }
+    
+    protected Server getServer()
+    {
+        return _server;
     }
 
     protected ServerConnector newServerConnector(InetSocketAddress addr,int backlog)
@@ -147,9 +154,23 @@ public class JettyHttpServer extends com.sun.net.httpserver.HttpServer
             throw new IllegalArgumentException("missing required 'executor' argument");
         ThreadPool threadPool = _server.getThreadPool();
         if (threadPool instanceof DelegatingThreadPool)
-            ((DelegatingThreadPool)_server.getThreadPool()).setExecutor(executor);
-        else
-            throw new UnsupportedOperationException("!DelegatingThreadPool");
+        {
+            try
+            {
+                if (_server.isRunning())
+                {
+                    _server.stop();
+                }
+                ((DelegatingThreadPool) _server.getThreadPool()).setExecutor(executor);
+                _server.start();
+            }
+            catch ( Exception e )
+            {
+                throw new RuntimeException(e.getMessage(), e);
+            }
+        } else {
+            throw new UnsupportedOperationException( "!DelegatingThreadPool" );
+        }
     }
 
     @Override
@@ -221,6 +242,18 @@ public class JettyHttpServer extends com.sun.net.httpserver.HttpServer
 
         chc.addHandler(jettyContextHandler);
         _contexts.put(path, context);
+
+        if(!jettyContextHandler.isStarted())
+        {
+            try
+            {
+                jettyContextHandler.start();
+            }
+            catch ( Exception e )
+            {
+                throw new RuntimeException( e.getMessage(), e );
+            }
+        }
 
         return context;
     }

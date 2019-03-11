@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,18 @@
 
 package org.eclipse.jetty.server;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritePendingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.CodingErrorAction;
+import java.util.ResourceBundle;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.servlet.RequestDispatcher;
@@ -36,6 +42,7 @@ import org.eclipse.jetty.http.HttpContent;
 import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
+import org.eclipse.jetty.util.IO;
 import org.eclipse.jetty.util.IteratingCallback;
 import org.eclipse.jetty.util.IteratingNestedCallback;
 import org.eclipse.jetty.util.SharedBlockingCallback;
@@ -55,6 +62,9 @@ import org.eclipse.jetty.util.log.Logger;
  */
 public class HttpOutput extends ServletOutputStream implements Runnable
 {
+    private static final String LSTRING_FILE = "javax.servlet.LocalStrings";
+    private static ResourceBundle lStrings = ResourceBundle.getBundle(LSTRING_FILE);
+
     /**
      * The HttpOutput.Interceptor is a single intercept point for all
      * output written to the HttpOutput: via writer; via output stream;
@@ -118,16 +128,14 @@ public class HttpOutput extends ServletOutputStream implements Runnable
     }
 
     private static Logger LOG = Log.getLogger(HttpOutput.class);
+    private final static ThreadLocal<CharsetEncoder> _encoder = new ThreadLocal<>();
 
     private final HttpChannel _channel;
     private final SharedBlockingCallback _writeBlocker;
     private Interceptor _interceptor;
-
-    /**
-     * Bytes written via the write API (excludes bytes written via sendContent). Used to autocommit once content length is written.
-     */
     private long _written;
-
+    private long _flushed;
+    private long _firstByteTimeStamp = -1;
     private ByteBuffer _aggregate;
     private int _bufferSize;
     private int _commitSize;
@@ -231,6 +239,14 @@ public class HttpOutput extends ServletOutputStream implements Runnable
 
     protected void write(ByteBuffer content, boolean complete, Callback callback)
     {
+        if (_firstByteTimeStamp == -1)
+        {
+            long minDataRate = getHttpChannel().getHttpConfiguration().getMinResponseDataRate();
+            if (minDataRate > 0)
+                _firstByteTimeStamp = System.nanoTime();
+            else
+                _firstByteTimeStamp = Long.MAX_VALUE;
+        }
         _interceptor.write(content, complete, callback);
     }
 
@@ -277,7 +293,7 @@ public class HttpOutput extends ServletOutputStream implements Runnable
                     IOException ex = new IOException("Closed while Pending/Unready");
                     LOG.warn(ex.toString());
                     LOG.debug(ex);
-                    _channel.abort(ex);
+                    abort(ex);
                     return;
                 }
                 default:
@@ -545,6 +561,8 @@ public class HttpOutput extends ServletOutputStream implements Runnable
 
     public void write(ByteBuffer buffer) throws IOException
     {
+        // This write always bypasses aggregate buffer
+
         // Async or Blocking ?
         while (true)
         {
@@ -668,10 +686,115 @@ public class HttpOutput extends ServletOutputStream implements Runnable
     @Override
     public void print(String s) throws IOException
     {
+        print(s,false);
+    }
+
+    @Override
+    public void println(String s) throws IOException
+    {
+        print(s,true);
+    }
+
+    private void print(String s, boolean eoln) throws IOException
+    {
         if (isClosed())
             throw new IOException("Closed");
 
-        write(s.getBytes(_channel.getResponse().getCharacterEncoding()));
+        String charset = _channel.getResponse().getCharacterEncoding();
+        CharsetEncoder encoder = _encoder.get();
+        if (encoder==null || !encoder.charset().name().equalsIgnoreCase(charset))
+        {
+            encoder = Charset.forName(charset).newEncoder();
+            encoder.onMalformedInput(CodingErrorAction.REPLACE);
+            encoder.onUnmappableCharacter(CodingErrorAction.REPLACE);
+            _encoder.set(encoder);
+        }
+        else
+        {
+            encoder.reset();
+        }
+
+        CharBuffer in = CharBuffer.wrap(s);
+        CharBuffer crlf = eoln?CharBuffer.wrap("\r\n"):null;
+        ByteBuffer out = getHttpChannel().getByteBufferPool().acquire((int)(1+(s.length()+2)*encoder.averageBytesPerChar()),false);
+        BufferUtil.flipToFill(out);
+
+        for(;;)
+        {
+            CoderResult result;
+            if (in.hasRemaining())
+            {
+                result = encoder.encode(in, out, crlf==null);
+                if (result.isUnderflow())
+                    if (crlf==null)
+                        break;
+                    else
+                        continue;
+            }
+            else if (crlf.hasRemaining())
+            {
+                result = encoder.encode(crlf, out, true);
+                if (result.isUnderflow())
+                {
+                    if (!encoder.flush(out).isUnderflow())
+                        result.throwException();
+                    break;
+                }
+            }
+            else
+                break;
+
+            if (result.isOverflow())
+            {
+                BufferUtil.flipToFlush(out,0);
+                ByteBuffer bigger = BufferUtil.ensureCapacity(out,out.capacity()+s.length()+2);
+                getHttpChannel().getByteBufferPool().release(out);
+                BufferUtil.flipToFill(bigger);
+                out = bigger;
+                continue;
+            }
+
+            result.throwException();
+        }
+        BufferUtil.flipToFlush(out,0);
+        write(out.array(),out.arrayOffset(),out.remaining());
+        getHttpChannel().getByteBufferPool().release(out);
+    }
+
+    @Override
+    public void println(boolean b) throws IOException
+    {
+        println(lStrings.getString(b? "value.true":"value.false"));
+    }
+
+    @Override
+    public void println(char c) throws IOException
+    {
+        println(String.valueOf(c));
+    }
+
+    @Override
+    public void println(int i) throws IOException
+    {
+        println(String.valueOf(i));
+    }
+
+    @Override
+    public void println(long l) throws IOException
+    {
+        println(String.valueOf(l));
+    }
+
+    @Override
+    public void println(float f) throws IOException
+    {
+        println(String.valueOf(f));
+    }
+
+    @Override
+    public void println(double d) throws IOException
+    {
+        println(String.valueOf(d));
     }
 
     /**
@@ -908,6 +1031,34 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         _commitSize = size;
     }
 
+    /**
+     * <p>Invoked when bytes have been flushed to the network.</p>
+     * <p>The number of flushed bytes may be different from the bytes written
+     * by the application if an {@link Interceptor} changed them, for example
+     * by compressing them.</p>
+     *
+     * @param bytes the number of bytes flushed
+     * @throws IOException if the minimum data rate, when set, is not respected
+     * @see org.eclipse.jetty.io.WriteFlusher.Listener
+     */
+    public void onFlushed(long bytes) throws IOException
+    {
+        if (_firstByteTimeStamp == -1 || _firstByteTimeStamp == Long.MAX_VALUE)
+            return;
+        long minDataRate = getHttpChannel().getHttpConfiguration().getMinResponseDataRate();
+        _flushed += bytes;
+        long elapsed = System.nanoTime() - _firstByteTimeStamp;
+        long minFlushed = minDataRate * TimeUnit.NANOSECONDS.toMillis(elapsed) / TimeUnit.SECONDS.toMillis(1);
+        if (LOG.isDebugEnabled())
+            LOG.debug("Flushed bytes min/actual {}/{}", minFlushed, _flushed);
+        if (_flushed < minFlushed)
+        {
+            IOException ioe = new IOException(String.format("Response content data rate < %d B/s", minDataRate));
+            _channel.abort(ioe);
+            throw ioe;
+        }
+    }
+
     public void recycle()
     {
         _interceptor = _channel;
@@ -920,6 +1071,8 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         _written = 0;
         _writeListener = null;
         _onError = null;
+        _firstByteTimeStamp = -1;
+        _flushed = 0;
         reopen();
     }
 
@@ -1011,8 +1164,16 @@ public class HttpOutput extends ServletOutputStream implements Runnable
                             _onError = null;
                             if (LOG.isDebugEnabled())
                                 LOG.debug("onError", th);
-                            _writeListener.onError(th);
-                            close();
+
+                            try
+                            {
+                                _writeListener.onError(th);
+                            }
+                            finally
+                            {
+                                IO.close(this);
+                            }
+
                             return;
                         }
                     }
@@ -1047,18 +1208,6 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         }
     }
 
-    private void close(Closeable resource)
-    {
-        try
-        {
-            resource.close();
-        }
-        catch (Throwable x)
-        {
-            LOG.ignore(x);
-        }
-    }
-
     @Override
     public String toString()
     {
@@ -1072,6 +1221,12 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         AsyncICB(boolean last)
         {
             _last = last;
+        }
+
+        @Override
+        public InvocationType getInvocationType()
+        {
+            return InvocationType.NON_BLOCKING;
         }
 
         @Override
@@ -1294,7 +1449,7 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         {
             abort(x);
             _channel.getByteBufferPool().release(_buffer);
-            HttpOutput.this.close(_in);
+            IO.close(_in);
             super.onCompleteFailure(x);
         }
     }
@@ -1354,7 +1509,7 @@ public class HttpOutput extends ServletOutputStream implements Runnable
         {
             abort(x);
             _channel.getByteBufferPool().release(_buffer);
-            HttpOutput.this.close(_in);
+            IO.close(_in);
             super.onCompleteFailure(x);
         }
     }

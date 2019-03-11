@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,10 +18,13 @@
 
 package org.eclipse.jetty.websocket.common;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
 import java.nio.ByteBuffer;
 
+import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.websocket.api.StatusCode;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
@@ -29,17 +32,14 @@ import org.eclipse.jetty.websocket.api.extensions.Frame;
 import org.eclipse.jetty.websocket.common.frames.CloseFrame;
 import org.eclipse.jetty.websocket.common.frames.PingFrame;
 import org.eclipse.jetty.websocket.common.frames.TextFrame;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
 import org.eclipse.jetty.websocket.common.util.Hex;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class WebSocketFrameTest
 {
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("WebSocketFrameTest");
+    public ByteBufferPool bufferPool = new MappedByteBufferPool();
 
     private Generator strictGenerator;
     private Generator laxGenerator;
@@ -52,7 +52,7 @@ public class WebSocketFrameTest
         return buf;
     }
 
-    @Before
+    @BeforeEach
     public void initGenerator()
     {
         WebSocketPolicy policy = WebSocketPolicy.newServerPolicy();
@@ -63,7 +63,7 @@ public class WebSocketFrameTest
     private void assertFrameHex(String message, String expectedHex, ByteBuffer actual)
     {
         String actualHex = Hex.asHex(actual);
-        Assert.assertThat("Generated Frame:" + message,actualHex,is(expectedHex));
+        assertThat("Generated Frame:" + message,actualHex,is(expectedHex));
     }
 
     @Test

@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[quickstart-jetty-coordinates]]
 === Finding Jetty in Maven
@@ -45,7 +47,7 @@ The top level Project Object Model (POM) for the Jetty project is located under 
 The changes between versions of Jetty are tracked in a file called VERSIONS.txt, which is under source control and is generated on release.
 Those generated files are also uploaded into Maven Central during the release of the top level POM. You can find them as a classifier marked artifact.
 
-http://central.maven.org/maven2/org/eclipse/jetty/jetty-project/
+https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-project/
 
 [source, xml, subs="{sub-order}"]
 ----

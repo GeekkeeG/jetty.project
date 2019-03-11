@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -81,6 +81,17 @@ public class HttpContent implements Callback, Closeable
         this.iterator = provider == null ? Collections.<ByteBuffer>emptyIterator() : provider.iterator();
     }
 
+    /**
+     * @param buffer
+     * @return true if the buffer is the sentinel instance {@link CLOSE}
+     */
+    private static boolean isTheCloseBuffer(ByteBuffer buffer)
+    {
+        @SuppressWarnings("ReferenceEquality")
+        boolean isTheCloseBuffer = (buffer == CLOSE);
+        return isTheCloseBuffer;
+    }
+    
     /**
      * @return whether there is any content at all
      */
@@ -177,6 +188,7 @@ public class HttpContent implements Callback, Closeable
     /**
      * @return whether the cursor has been advanced past the {@link #isLast() last} position.
      */
+    @SuppressWarnings("ReferenceEquality")
     public boolean isConsumed()
     {
         return buffer == AFTER;
@@ -187,7 +199,7 @@ public class HttpContent implements Callback, Closeable
     {
         if (isConsumed())
             return;
-        if (buffer == CLOSE)
+        if (isTheCloseBuffer(buffer))
             return;
         if (iterator instanceof Callback)
             ((Callback)iterator).succeeded();
@@ -198,7 +210,7 @@ public class HttpContent implements Callback, Closeable
     {
         if (isConsumed())
             return;
-        if (buffer == CLOSE)
+        if (isTheCloseBuffer(buffer))
             return;
         if (iterator instanceof Callback)
             ((Callback)iterator).failed(x);

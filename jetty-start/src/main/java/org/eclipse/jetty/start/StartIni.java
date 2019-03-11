@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,6 @@
 
 package org.eclipse.jetty.start;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -93,7 +92,9 @@ public class StartIni extends TextFile
         update = update.substring(0,update.lastIndexOf("."));
         String source = baseHome.toShortForm(getFile());
         
-        try (PrintWriter writer = new PrintWriter(Files.newBufferedWriter(getFile(),StandardCharsets.UTF_8,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.CREATE)))
+        PrintWriter writer = null;
+        
+        try
         {
             for (String line : getAllLines())
             {
@@ -103,23 +104,42 @@ public class StartIni extends TextFile
                     String name = m.group(2);
                     String value = m.group(3);
                     Prop p = props.getProp(name);
-                    if (p!=null && ("#".equals(m.group(1)) || !value.equals(p.value)))
+                    
+                    if (p!=null && (p.source==null || !p.source.endsWith("?=")) && ("#".equals(m.group(1)) || !value.equals(p.value)))
                     {
+                        if (writer==null)
+                        {
+                            writer = new PrintWriter(Files.newBufferedWriter(getFile(),StandardCharsets.UTF_8,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.CREATE));
+                            for (String l : getAllLines())
+                            {
+                                if (line.equals(l))
+                                    break;
+                                writer.println(l);
+                            }
+                        }
+                        
                         StartLog.info("%-15s property updated %s=%s",update,name,p.value);
                         writer.printf("%s=%s%n",name,p.value);
                     }
-                    else
+                    else if (writer!=null)
                     {
                         writer.println(line);
                     }
                 }
-                else
+                else if (writer!=null)
                 {
                     writer.println(line);
                 }
             }
         }
+        finally
+        {
+            if (writer!=null)
+            {
+                StartLog.info("%-15s updated %s",update,source);
+                writer.close();
+            }
+        }
 
-        StartLog.info("%-15s updated %s",update,source);
     }
 }

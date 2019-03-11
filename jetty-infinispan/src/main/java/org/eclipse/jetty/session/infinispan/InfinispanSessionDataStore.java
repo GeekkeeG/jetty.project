@@ -22,11 +22,12 @@ package org.eclipse.jetty.session.infinispan;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.eclipse.jetty.server.SessionIdManager;
 import org.eclipse.jetty.server.session.AbstractSessionDataStore;
 import org.eclipse.jetty.server.session.SessionData;
+import org.eclipse.jetty.server.session.UnreadableSessionDataException;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.log.Log;
@@ -44,7 +45,6 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
     private  final static Logger LOG = Log.getLogger("org.eclipse.jetty.server.session");
 
 
-
     /**
      * Clustered cache of sessions
      */
@@ -52,6 +52,8 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
 
     
     private int _infinispanIdleTimeoutSec;
+    
+    private boolean _passivating;
     
 
     /**
@@ -76,49 +78,55 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
         this._cache = cache;
     }
 
-    
-    
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionDataStore#load(String)
-     */
-    @Override
-    public SessionData load(String id) throws Exception
-    {  
-        final AtomicReference<SessionData> reference = new AtomicReference<SessionData>();
-        final AtomicReference<Exception> exception = new AtomicReference<Exception>();
-        
-        Runnable load = new Runnable()
-        {
-            public void run ()
-            {
-                try
-                {
 
-                    if (LOG.isDebugEnabled())
-                        LOG.debug("Loading session {} from infinispan", id);
-     
-                    SessionData sd = (SessionData)_cache.get(getCacheKey(id));
-                    reference.set(sd);
-                }
-                catch (Exception e)
-                {
-                    exception.set(e);
-                }
-            }
-        };
-        
-        //ensure the load runs in the context classloader scope
-        _context.run(load);
-        
-        if (exception.get() != null)
-            throw exception.get();
-        
-        return reference.get();
+
+    @Override
+    protected void doStart() throws Exception
+    {
+        super.doStart();
+        if (_cache == null)
+            throw new IllegalStateException ("No cache");
+
+        try 
+        {
+            _passivating = false;
+            Class<?> remoteClass = Thread.currentThread().getContextClassLoader().loadClass("org.infinispan.client.hotrod.RemoteCache");
+            if (remoteClass.isAssignableFrom(_cache.getClass()))
+                _passivating = true;
+        }
+        catch (ClassNotFoundException e)
+        {
+            //expected if not running with remote cache
+        }
     }
 
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionDataStore#delete(String)
-     */
+
+
+    @Override
+    public SessionData doLoad(String id) throws Exception
+    {  
+        try
+        {
+            if (LOG.isDebugEnabled())
+                LOG.debug("Loading session {} from infinispan", id);
+
+            InfinispanSessionData sd = (InfinispanSessionData)_cache.get(getCacheKey(id));
+            if (isPassivating() && sd != null)
+            {
+                if (LOG.isDebugEnabled())
+                    LOG.debug("Deserializing session attributes for {}", id);
+                sd.deserializeAttributes();
+            }
+
+            return sd;
+        }
+        catch (Exception e)
+        {
+            throw new UnreadableSessionDataException(id, _context, e);
+        }
+    }
+
+
     @Override
     public boolean delete(String id) throws Exception
     {
@@ -127,9 +135,7 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
         return (_cache.remove(getCacheKey(id)) != null);
     }
 
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionDataStore#getExpired(Set)
-     */
+
     @Override
     public Set<String> doGetExpired(Set<String> candidates)
     {
@@ -138,11 +144,10 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
        
        long now = System.currentTimeMillis();
        
-       Set<String> expired = new HashSet<String>();
+       Set<String> expired = new HashSet<>();
        
        //TODO if there is NOT an idle timeout set on entries in infinispan, need to check other sessions
-       //that are not currently in the SessionDataStore (eg they've been passivated)
-       
+       //that are not currently in the SessionDataStore (eg they've been passivated)   
        for (String candidate:candidates)
        {
            if (LOG.isDebugEnabled())
@@ -198,29 +203,21 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
        return expired;
     }
 
-    /** 
-     * @see org.eclipse.jetty.server.session.AbstractSessionDataStore#doStore(String, SessionData, long)
-     */
+
     @Override
     public void doStore(String id, SessionData data, long lastSaveTime) throws Exception
     {
-        try
-        {
         //Put an idle timeout on the cache entry if the session is not immortal - 
         //if no requests arrive at any node before this timeout occurs, or no node 
         //scavenges the session before this timeout occurs, the session will be removed.
         //NOTE: that no session listeners can be called for this.
         if (data.getMaxInactiveMs() > 0 && getInfinispanIdleTimeoutSec() > 0)
-            _cache.put(getCacheKey(id), data, -1, TimeUnit.MILLISECONDS, getInfinispanIdleTimeoutSec(), TimeUnit.SECONDS);
+            _cache.put(getCacheKey(id), (InfinispanSessionData)data, -1, TimeUnit.MILLISECONDS, getInfinispanIdleTimeoutSec(), TimeUnit.SECONDS);
         else
-            _cache.put(getCacheKey(id), data);
+            _cache.put(getCacheKey(id),  (InfinispanSessionData)data);
 
         if (LOG.isDebugEnabled())
             LOG.debug("Session {} saved to infinispan, expires {} ", id, data.getExpiry());
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-        }
     }
     
     
@@ -230,45 +227,26 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
     }
 
 
-
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionDataStore#isPassivating()
-     */
     @ManagedAttribute(value="does store serialize sessions", readonly=true)
     @Override
     public boolean isPassivating()
     {
-        //TODO run in the _context to ensure classloader is set
-        try 
-        {
-           Class<?> remoteClass = Thread.currentThread().getContextClassLoader().loadClass("org.infinispan.client.hotrod.RemoteCache");
-           if (remoteClass.isAssignableFrom(_cache.getClass()))
-           {
-               return true;
-           }
-           return false;
-        }
-        catch (ClassNotFoundException e)
-        {
-            return false;
-        }
+        return _passivating;
     }
     
     
     
-    /** 
-     * @see org.eclipse.jetty.server.session.SessionDataStore#exists(java.lang.String)
-     */
     @Override
     public boolean exists(String id) throws Exception
     {
         // TODO find a better way to do this that does not pull into memory the
         // whole session object
-        final AtomicReference<Boolean> reference = new AtomicReference<Boolean>();
-        final AtomicReference<Exception> exception = new AtomicReference<Exception>();
+        final AtomicBoolean reference = new AtomicBoolean();
+        final AtomicReference<Exception> exception = new AtomicReference<>();
 
         Runnable load = new Runnable()
         {
+            @Override
             public void run ()
             {
                 try
@@ -276,14 +254,14 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
                     SessionData sd = load(id);
                     if (sd == null)
                     {
-                        reference.set(Boolean.FALSE);
+                        reference.set(false);
                         return;
                     }
 
                     if (sd.getExpiry() <= 0)
-                        reference.set(Boolean.TRUE); //never expires
+                        reference.set(true); //never expires
                     else
-                        reference.set(Boolean.valueOf(sd.getExpiry() > System.currentTimeMillis())); //not expired yet
+                        reference.set(sd.getExpiry() > System.currentTimeMillis()); //not expired yet
                 }
                 catch (Exception e)
                 {
@@ -303,6 +281,13 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
 
 
 
+    @Override
+    public SessionData newSessionData(String id, long created, long accessed, long lastAccessed, long maxInactiveMs)
+    {
+        return new InfinispanSessionData(id, _context.getCanonicalContextPath(), _context.getVhost(), created, accessed, lastAccessed, maxInactiveMs);
+    }
+
+
     /**
      * @param sec the infinispan-specific idle timeout in sec or 0 if not set
      */
@@ -319,15 +304,9 @@ public class InfinispanSessionDataStore extends AbstractSessionDataStore
     }
 
 
-
-    /** 
-     * @see org.eclipse.jetty.server.session.AbstractSessionDataStore#toString()
-     */
     @Override
     public String toString()
     {
         return String.format("%s[cache=%s,idleTimeoutSec=%d]",super.toString(), (_cache==null?"":_cache.getName()),_infinispanIdleTimeoutSec);
     }
-    
-    
 }

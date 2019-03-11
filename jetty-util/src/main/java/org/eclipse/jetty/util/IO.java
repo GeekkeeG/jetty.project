@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -85,6 +85,7 @@ public class IO
         /*
          * @see java.lang.Runnable#run()
          */
+        @Override
         public void run()
         {
             try {
@@ -335,7 +336,7 @@ public class IO
 
     /* ------------------------------------------------------------ */
     /** Delete File.
-     * This delete will recursively delete directories - BE CAREFULL
+     * This delete will recursively delete directories - BE CAREFUL
      * @param file The file (or directory) to be deleted.
      * @return true if anything was deleted. (note: this does not mean that all content in a directory was deleted)
      */

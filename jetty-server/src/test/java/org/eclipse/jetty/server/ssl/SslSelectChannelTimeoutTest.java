@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,7 +29,7 @@ import javax.net.ssl.TrustManagerFactory;
 import org.eclipse.jetty.server.ConnectorTimeoutTest;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.junit.Before;
+import org.junit.jupiter.api.BeforeEach;
 
 public class SslSelectChannelTimeoutTest extends ConnectorTimeoutTest
 {
@@ -41,7 +41,7 @@ public class SslSelectChannelTimeoutTest extends ConnectorTimeoutTest
         return __sslContext.getSocketFactory().createSocket(host,port);
     }
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         String keystorePath = System.getProperty("basedir",".") + "/src/test/resources/keystore";

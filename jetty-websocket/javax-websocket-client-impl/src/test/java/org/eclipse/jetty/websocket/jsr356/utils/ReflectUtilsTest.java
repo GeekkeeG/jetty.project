@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,13 @@
 
 package org.eclipse.jetty.websocket.jsr356.utils;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.eclipse.jetty.websocket.common.util.ReflectUtils;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class ReflectUtilsTest
 {
@@ -126,13 +128,13 @@ public class ReflectUtilsTest
         // Washington does not have a concrete implementation
         // of the Fruit interface, this should return null
         Class<?> impl = ReflectUtils.findGenericClassFor(Washington.class,Fruit.class);
-        Assert.assertThat("Washington -> Fruit implementation",impl,nullValue());
+        assertThat("Washington -> Fruit implementation",impl,nullValue());
     }
 
     private void assertFindGenericClass(Class<?> baseClass, Class<?> ifaceClass, Class<?> expectedClass)
     {
         Class<?> foundClass = ReflectUtils.findGenericClassFor(baseClass,ifaceClass);
         String msg = String.format("Expecting %s<%s> found on %s",ifaceClass.getName(),expectedClass.getName(),baseClass.getName());
-        Assert.assertEquals(msg,expectedClass,foundClass);
+        assertEquals(expectedClass,foundClass,msg);
     }
 }

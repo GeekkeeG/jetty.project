@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -69,6 +69,7 @@ public class ServletSecurityAnnotationHandler extends AbstractIntrospectableAnno
     /**
      * @see org.eclipse.jetty.annotations.AnnotationIntrospector.IntrospectableAnnotationHandler#handle(java.lang.Class)
      */
+    @Override
     public void doHandle(Class clazz)
     {
         if (!(_context.getSecurityHandler() instanceof ConstraintAware))

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -33,7 +33,6 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.webapp.Configuration;
 import org.eclipse.jetty.webapp.WebAppContext;
@@ -69,9 +68,8 @@ public class ServerSupport
             throw new IllegalArgumentException ("Server is null");
 
         DefaultHandler defaultHandler = new DefaultHandler();
-        RequestLogHandler requestLogHandler = new RequestLogHandler();
         if (requestLog != null)
-            requestLogHandler.setRequestLog(requestLog);
+            server.setRequestLog(requestLog);
 
         ContextHandlerCollection contexts = findContextHandlerCollection(server);
         if (contexts == null)
@@ -82,7 +80,7 @@ public class ServerSupport
             {
                 handlers = new HandlerCollection();               
                 server.setHandler(handlers);                            
-                handlers.setHandlers(new Handler[]{contexts, defaultHandler, requestLogHandler});
+                handlers.setHandlers(new Handler[]{contexts, defaultHandler});
             }
             else
             {
@@ -164,30 +162,30 @@ public class ServerSupport
         if (server == null)
             return null;
 
-        return (ContextHandlerCollection)server.getChildHandlerByClass(ContextHandlerCollection.class);
+        return server.getChildHandlerByClass(ContextHandlerCollection.class);
     }
 
 
     /**
-     * Apply xml files to server startup, passing in ourselves as the 
-     * "Server" instance.
+     * Apply xml files to server instance.
      * 
      * @param server the server to apply the xml to
      * @param files the list of xml files
+     * @param properties list of jetty properties
      * @return the Server implementation, after the xml is applied
      * @throws Exception if unable to apply the xml configuration
      */
-    public static Server applyXmlConfigurations (Server server, List<File> files) 
+    public static Server applyXmlConfigurations (Server server, List<File> files, Map<String,String> properties) 
     throws Exception
     {
         if (files == null || files.isEmpty())
             return server;
 
-        Map<String,Object> lastMap = new HashMap<String,Object>();
-        
+        Map<String,Object> lastMap = new HashMap<>();
+
         if (server != null)
             lastMap.put("Server", server);
-     
+
 
         for ( File xmlFile : files )
         {
@@ -196,6 +194,15 @@ public class ServerSupport
 
 
             XmlConfiguration xmlConfiguration = new XmlConfiguration(Resource.toURL(xmlFile));
+            
+            //add in any properties
+            if (properties != null)
+            {
+                for (Map.Entry<String,String> e:properties.entrySet())
+                {
+                    xmlConfiguration.getProperties().put(e.getKey(), e.getValue());
+                }
+            }
 
             //chain ids from one config file to another
             if (lastMap != null)
@@ -215,4 +222,19 @@ public class ServerSupport
         return (Server)lastMap.get("Server");
     }
 
+    /**
+     * Apply xml files to server instance.
+     * 
+     * @param server the Server instance to configure
+     * @param files the xml configs to apply
+     * @return the Server after application of configs
+     * 
+     * @throws Exception if unable to apply the xml configuration
+     */
+    public static Server applyXmlConfigurations (Server server, List<File> files) 
+            throws Exception
+    {
+        return applyXmlConfigurations(server, files, null);
+    }
+    
 }

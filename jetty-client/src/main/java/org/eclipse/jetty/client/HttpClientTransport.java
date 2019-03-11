@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -68,4 +68,14 @@ public interface HttpClientTransport extends ClientConnectionFactory
      * @param context the context information to establish the connection
      */
     public void connect(InetSocketAddress address, Map<String, Object> context);
+
+    /**
+     * @return the factory for ConnectionPool instances
+     */
+    public ConnectionPool.Factory getConnectionPoolFactory();
+
+    /**
+     * @param factory the factory for ConnectionPool instances
+     */
+    public void setConnectionPoolFactory(ConnectionPool.Factory factory);
 }

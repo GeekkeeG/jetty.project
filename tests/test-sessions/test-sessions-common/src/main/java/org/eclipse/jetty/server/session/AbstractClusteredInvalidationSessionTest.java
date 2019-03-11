@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,13 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -33,8 +35,9 @@ import javax.servlet.http.HttpSession;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
+import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 /**
  * AbstractClusteredInvalidationSessionTest
@@ -52,24 +55,31 @@ public abstract class AbstractClusteredInvalidationSessionTest extends AbstractT
     @Test
     public void testInvalidation() throws Exception
     {
-        String contextPath = "";
+        String contextPath = "/";
         String servletMapping = "/server";
         int maxInactiveInterval = 30;
         int scavengeInterval = 1;
-        DefaultSessionCacheFactory cacheFactory = new DefaultSessionCacheFactory();
-        cacheFactory.setEvictionPolicy(SessionCache.EVICT_ON_SESSION_EXIT);
-        SessionDataStoreFactory storeFactory = createSessionDataStoreFactory();   
-        ((AbstractSessionDataStoreFactory)storeFactory).setGracePeriodSec(scavengeInterval);
+        DefaultSessionCacheFactory cacheFactory1 = new DefaultSessionCacheFactory();
+        cacheFactory1.setEvictionPolicy(SessionCache.EVICT_ON_SESSION_EXIT);
+        SessionDataStoreFactory storeFactory1 = createSessionDataStoreFactory();   
+        ((AbstractSessionDataStoreFactory)storeFactory1).setGracePeriodSec(scavengeInterval);
         
-        TestServer server1 = new TestServer(0, maxInactiveInterval, scavengeInterval, cacheFactory, storeFactory);
-        server1.addContext(contextPath).addServlet(TestServlet.class, servletMapping);
-
+        TestServer server1 = new TestServer(0, maxInactiveInterval, scavengeInterval, cacheFactory1, storeFactory1);
+        ServletContextHandler context = server1.addContext(contextPath);
+        context.addServlet(TestServlet.class, servletMapping);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        context.addEventListener(scopeListener);
 
         try
         {
             server1.start();
             int port1 = server1.getPort();
-            TestServer server2 = new TestServer(0, maxInactiveInterval, scavengeInterval, cacheFactory, storeFactory);
+            
+            DefaultSessionCacheFactory cacheFactory2 = new DefaultSessionCacheFactory();
+            cacheFactory2.setEvictionPolicy(SessionCache.EVICT_ON_SESSION_EXIT);
+            SessionDataStoreFactory storeFactory2 = createSessionDataStoreFactory();   
+            ((AbstractSessionDataStoreFactory)storeFactory2).setGracePeriodSec(scavengeInterval);
+            TestServer server2 = new TestServer(0, maxInactiveInterval, scavengeInterval, cacheFactory2, storeFactory2);
             server2.addContext(contextPath).addServlet(TestServlet.class, servletMapping);
 
             try
@@ -84,10 +94,12 @@ public abstract class AbstractClusteredInvalidationSessionTest extends AbstractT
                 try
                 {
                     String[] urls = new String[2];
-                    urls[0] = "http://localhost:" + port1 + contextPath + servletMapping;
-                    urls[1] = "http://localhost:" + port2 + contextPath + servletMapping;
+                    urls[0] = "http://localhost:" + port1 + contextPath + servletMapping.substring(1);
+                    urls[1] = "http://localhost:" + port2 + contextPath + servletMapping.substring(1);
 
                     // Create the session on node1
+                    CountDownLatch latch = new CountDownLatch(1);
+                    scopeListener.setExitSynchronizer(latch);
                     ContentResponse response1 = client.GET(urls[0] + "?action=init");
 
                     assertEquals(HttpServletResponse.SC_OK,response1.getStatus());
@@ -96,21 +108,32 @@ public abstract class AbstractClusteredInvalidationSessionTest extends AbstractT
                     // Mangle the cookie, replacing Path with $Path, etc.
                     sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
 
+                    //ensure request is fully finished processing
+                    latch.await(5, TimeUnit.SECONDS);
+                    
                     // Be sure the session is also present in node2
+                    latch = new CountDownLatch(1);
+                    scopeListener.setExitSynchronizer(latch);
                     Request request2 = client.newRequest(urls[1] + "?action=increment");
                     request2.header("Cookie", sessionCookie);
                     ContentResponse response2 = request2.send();
                     assertEquals(HttpServletResponse.SC_OK,response2.getStatus());
 
+                    //ensure request is fully finished processing
+                    latch.await(5, TimeUnit.SECONDS);
+                    
                     // Invalidate on node1
+                    latch = new CountDownLatch(1);
+                    scopeListener.setExitSynchronizer(latch);
                     Request request1 = client.newRequest(urls[0] + "?action=invalidate");
-                    request1.header("Cookie", sessionCookie);
                     response1 = request1.send();
-                    assertEquals(HttpServletResponse.SC_OK, response1.getStatus());         
+                    assertEquals(HttpServletResponse.SC_OK, response1.getStatus());  
+                    
+                    //ensure request is fully finished processing
+                    latch.await(5, TimeUnit.SECONDS);
 
                     // Be sure on node2 we don't see the session anymore
                     request2 = client.newRequest(urls[1] + "?action=test");
-                    request2.header("Cookie", sessionCookie);
                     response2 = request2.send();
                     assertEquals(HttpServletResponse.SC_OK,response2.getStatus());
                 }

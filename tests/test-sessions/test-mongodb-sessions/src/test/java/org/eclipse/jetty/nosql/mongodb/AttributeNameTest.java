@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,13 @@
 
 package org.eclipse.jetty.nosql.mongodb;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -38,9 +39,9 @@ import org.eclipse.jetty.server.session.DefaultSessionCacheFactory;
 import org.eclipse.jetty.server.session.Session;
 import org.eclipse.jetty.server.session.SessionCache;
 import org.eclipse.jetty.server.session.TestServer;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 /**
  * AttributeNameTest
@@ -53,14 +54,14 @@ public class AttributeNameTest
 {
 
     
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws Exception
     {
         MongoTestHelper.dropCollection();
         MongoTestHelper.createCollection();
     }
 
-    @AfterClass
+    @AfterAll
     public static void afterClass() throws Exception
     {
         MongoTestHelper.dropCollection();
@@ -145,7 +146,7 @@ public class AttributeNameTest
             if ("init".equals(action))
             {
                 Session session = (Session)request.getSession(true);
-                session.setAttribute("a.b.c",System.currentTimeMillis());               
+                session.setAttribute("a.b.c",TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));               
                 sendResult(session,httpServletResponse.getWriter());
 
             }

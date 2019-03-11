@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,8 +20,9 @@ package org.eclipse.jetty.server;
 
 import java.security.Principal;
 import java.util.Map;
-
 import javax.security.auth.Subject;
+
+import org.eclipse.jetty.server.handler.ContextHandler;
 
 /** 
  * User object that encapsulates user identity and operations such as run-as-role actions,
@@ -66,6 +67,12 @@ public interface UserIdentity
     {
         /* ------------------------------------------------------------ */
         /**
+         * @return The context handler that the identity is being considered within
+         */
+        ContextHandler getContextHandler();
+
+        /* ------------------------------------------------------------ */
+        /**
          * @return The context path that the identity is being considered within
          */
         String getContextPath();
@@ -92,16 +99,19 @@ public interface UserIdentity
     /* ------------------------------------------------------------ */
     public static final UserIdentity UNAUTHENTICATED_IDENTITY = new UnauthenticatedUserIdentity()
     {
+        @Override
         public Subject getSubject()
         {
             return null;
         }
 
+        @Override
         public Principal getUserPrincipal()
         {
             return null;
         }
 
+        @Override
         public boolean isUserInRole(String role, Scope scope)
         {
             return false;

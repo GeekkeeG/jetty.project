@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -36,6 +36,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#begin()
      */
+    @Override
     public void begin() throws NotSupportedException, SystemException
     {
     }
@@ -43,6 +44,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#commit()
      */
+    @Override
     public void commit() throws HeuristicMixedException,
             HeuristicRollbackException, IllegalStateException,
             RollbackException, SecurityException, SystemException
@@ -52,6 +54,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#getStatus()
      */
+    @Override
     public int getStatus() throws SystemException
     {
         return 0;
@@ -60,6 +63,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#rollback()
      */
+    @Override
     public void rollback() throws IllegalStateException, SecurityException,
             SystemException
     {
@@ -68,6 +72,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#setRollbackOnly()
      */
+    @Override
     public void setRollbackOnly() throws IllegalStateException, SystemException
     {
     }
@@ -75,6 +80,7 @@ public class MockUserTransaction implements UserTransaction
     /** 
      * @see javax.transaction.UserTransaction#setTransactionTimeout(int)
      */
+    @Override
     public void setTransactionTimeout(int arg0) throws SystemException
     {
     }

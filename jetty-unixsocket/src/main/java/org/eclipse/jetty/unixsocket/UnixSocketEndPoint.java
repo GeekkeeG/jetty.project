@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,10 +20,13 @@ package org.eclipse.jetty.unixsocket;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 
 import org.eclipse.jetty.io.ChannelEndPoint;
+import org.eclipse.jetty.io.EofException;
 import org.eclipse.jetty.io.ManagedSelector;
+import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.thread.Scheduler;
@@ -32,8 +35,9 @@ import jnr.unixsocket.UnixSocketChannel;
 
 public class UnixSocketEndPoint extends ChannelEndPoint
 {
-    public final static InetSocketAddress NOIP=new InetSocketAddress(0);
     private static final Logger LOG = Log.getLogger(UnixSocketEndPoint.class);
+    private static final Logger CEPLOG = Log.getLogger(ChannelEndPoint.class);
+
 
     private final UnixSocketChannel _channel;
     

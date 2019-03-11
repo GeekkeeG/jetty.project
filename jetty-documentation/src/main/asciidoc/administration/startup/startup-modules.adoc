@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,12 +14,14 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[startup-modules]]
 === Managing Startup Modules
 
 The standard Jetty Distribution ships with several modules defined in `${jetty.home}/modules/`.
-These modules allow flexibility for implementations and make configuration a much more plug-and-play set up.
+Modules interact with Jetty XML files to configure options and parameters for the server and are the primary configuration method for Jetty distributions.
+Modules allow flexibility for implementations and their plug-and-play nature makes adding or removing server functionality virtually painless.
 
 [[enabling-modules]]
 ==== Enabling Modules
@@ -28,27 +31,27 @@ The default distribution has a co-mingled `${jetty.home}` and `${jetty.base}` wh
 It is highly encouraged that you learn about the differences in link:#startup-base-and-home[Jetty Base vs Jetty Home] and take full advantage of this setup.
 ____
 
-Jetty ships with many modules defined in `${jetty.home}/modules`.
-Enabling a module is a simple process: simply add the `--add-to-start` syntax on the command line.
-Doing this will enable the module and any dependent modules.
+Enabling a module is a simple process: simply add the `--add-to-start=<module-name1>,<module-name2>,...etc.` syntax on the command line.
+Doing this will enable the specified module and any dependent modules.
 
-An example of this, with a new, empty, base directory.
-We can see from this output, that the directory is new.
+An example of this with a new, empty, base directory:
+
+If we try to start the Jetty server with no configuration or modules enabled, it will promptly exit:
 
 include::screen-empty-base.adoc[]
 
-Lets see what the configuration looks like so far:
+By using the `--list-config` parameter to our startup command, we can see that there are no modules enabled and no Jetty XML files are active:
 
 include::screen-empty-base-listconfig.adoc[]
 
-Lets try adding some basic support for webapps, with automatic deploy (hot deploy), and a single basic HTTP/1.1 connector.
+Let's try adding some basic support for webapps, with automatic deploy (hot deploy), and a single basic HTTP/1.1 connector.
 
 include::screen-http-webapp-deploy.adoc[]
 
-This created the webapps directory in our `mybase` directory and appended the `start.ini` file with the ini template arguments from the associated module files.
-Additionally, where needed, Jetty enabled any module dependencies and added their module ini template properties.
+This creates the webapps directory in our `mybase` directory and appended the `start.ini` file with the ini template arguments from the associated module files.
+Additionally, where needed, Jetty enabled any module dependencies.
 
-Lets see what it looks like configuration wise.
+Now that we have added some modules to our server, let's run `--list-config` again to review our new configuration.
 
 include::screen-http-webapp-deploy-listconfig.adoc[]
 
@@ -144,6 +147,14 @@ Once a module has been enabled for the server, it can be further configured to m
 This is done by editing the associated ini file for the module.
 If your server setup is using a centralized ini configuration, you will edit the `${jetty.base}/server.ini` file.
 If you have elected to manage each module within it's own ini file, you can find these files in the `${jetty.base}/start.d` directory.
+
+____
+[IMPORTANT]
+It is important that you *do not* modify the module files in the `$JETTY_HOME/modules` directory.
+$JETTY_HOME should always remain a standard of truth.
+If you want to make a change to an actual module file (not the values in its `ini-template`), either edit its associated `ini` file in the `$JETTY_BASE/start.d` directory or make a copy of the desired module file and copy it to the `$JETTY_BASE` directory and edit it there.
+The start.jar reads local `$JETTY_BASE/modules` files (if they exist) before scanning `$JETTY_HOME`.
+____
 
 When a module is activated, a number of properties are set by default.
 To view these defaults, open up the associated ini file.

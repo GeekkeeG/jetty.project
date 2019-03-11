@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -74,6 +74,7 @@ public class AppLifeCycle extends Graph
     public static final String STARTED = "started";
     public static final String STOPPING = "stopping";
     public static final String UNDEPLOYING = "undeploying";
+    public static final String FAILED = "failed";
     
     
     private Map<String, List<Binding>> lifecyclebindings = new HashMap<String, List<Binding>>();
@@ -97,6 +98,9 @@ public class AppLifeCycle extends Graph
         // deployed -> undeployed
         addEdge(DEPLOYED,UNDEPLOYING);
         addEdge(UNDEPLOYING,UNDEPLOYED);
+
+        // failed (unconnected)
+        addNode(new Node(FAILED));
     }
 
     public void addBinding(AppLifeCycle.Binding binding)

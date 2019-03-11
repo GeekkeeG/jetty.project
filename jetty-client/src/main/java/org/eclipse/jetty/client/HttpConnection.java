@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -31,18 +31,16 @@ import org.eclipse.jetty.client.api.Connection;
 import org.eclipse.jetty.client.api.ContentProvider;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.client.api.Response;
-import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
-import org.eclipse.jetty.http.HttpHeaderValue;
 import org.eclipse.jetty.http.HttpVersion;
+import org.eclipse.jetty.util.HttpCookieStore;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 
 public abstract class HttpConnection implements Connection
 {
     private static final Logger LOG = Log.getLogger(HttpConnection.class);
-    private static final HttpField CHUNKED_FIELD = new HttpField(HttpHeader.TRANSFER_ENCODING, HttpHeaderValue.CHUNKED);
 
     private final HttpDestination destination;
     private int idleTimeoutGuard;
@@ -70,12 +68,8 @@ public abstract class HttpConnection implements Connection
         HttpRequest httpRequest = (HttpRequest)request;
 
         ArrayList<Response.ResponseListener> listeners = new ArrayList<>(httpRequest.getResponseListeners());
-        if (httpRequest.getTimeout() > 0)
-        {
-            TimeoutCompleteListener timeoutListener = new TimeoutCompleteListener(httpRequest);
-            timeoutListener.schedule(getHttpClient().getScheduler());
-            listeners.add(timeoutListener);
-        }
+        
+        httpRequest.sent();
         if (listener != null)
             listeners.add(listener);
 
@@ -127,9 +121,15 @@ public abstract class HttpConnection implements Connection
                 if (content instanceof ContentProvider.Typed)
                     contentType = ((ContentProvider.Typed)content).getContentType();
                 if (contentType != null)
+                {
                     headers.put(HttpHeader.CONTENT_TYPE, contentType);
+                }
                 else
-                    headers.put(HttpHeader.CONTENT_TYPE, "application/octet-stream");
+                {
+                    contentType = getHttpClient().getDefaultRequestContentType();
+                    if (contentType != null)
+                        headers.put(HttpHeader.CONTENT_TYPE, contentType);
+                }
             }
             long contentLength = content.getLength();
             if (contentLength >= 0)
@@ -145,7 +145,7 @@ public abstract class HttpConnection implements Connection
         {
             StringBuilder cookies = null;
             if (uri != null)
-                cookies = convertCookies(cookieStore.get(uri), null);
+                cookies = convertCookies(HttpCookieStore.matchPath(uri, cookieStore.get(uri)), null);
             cookies = convertCookies(request.getCookies(), cookies);
             if (cookies != null)
                 request.header(HttpHeader.COOKIE.asString(), cookies.toString());
@@ -158,13 +158,12 @@ public abstract class HttpConnection implements Connection
 
     private StringBuilder convertCookies(List<HttpCookie> cookies, StringBuilder builder)
     {
-        for (int i = 0; i < cookies.size(); ++i)
+        for (HttpCookie cookie : cookies)
         {
             if (builder == null)
                 builder = new StringBuilder();
             if (builder.length() > 0)
                 builder.append("; ");
-            HttpCookie cookie = cookies.get(i);
             builder.append(cookie.getName()).append("=").append(cookie.getValue());
         }
         return builder;

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -59,6 +59,15 @@ public class SessionAuthentication extends AbstractUserAuthentication implements
     }
 
 
+    @Override
+    public UserIdentity getUserIdentity()
+    {
+        if (_userIdentity == null)
+            throw new IllegalStateException("!UserIdentity");
+        return super.getUserIdentity();
+    }
+
+
     private void readObject(ObjectInputStream stream)
         throws IOException, ClassNotFoundException
     {
@@ -66,15 +75,23 @@ public class SessionAuthentication extends AbstractUserAuthentication implements
 
         SecurityHandler security=SecurityHandler.getCurrentSecurityHandler();
         if (security==null)
-            throw new IllegalStateException("!SecurityHandler");
+        {
+            if (LOG.isDebugEnabled()) LOG.debug("!SecurityHandler");
+            return;
+        }
+
         LoginService login_service=security.getLoginService();
         if (login_service==null)
-            throw new IllegalStateException("!LoginService");
+        {
+            if (LOG.isDebugEnabled()) LOG.debug("!LoginService");
+            return;
+        }
 
         _userIdentity=login_service.login(_name,_credentials, null);
         LOG.debug("Deserialized and relogged in {}",this);
     }
 
+    @Override
     public void logout()
     {
         if (_session!=null && _session.getAttribute(__J_AUTHENTICATED)!=null)

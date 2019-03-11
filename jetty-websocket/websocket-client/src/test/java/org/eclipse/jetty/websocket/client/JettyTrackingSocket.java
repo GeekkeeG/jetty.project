@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,21 +21,21 @@ package org.eclipse.jetty.websocket.client;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import org.eclipse.jetty.toolchain.test.EventQueue;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
+import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.UpgradeRequest;
 import org.eclipse.jetty.websocket.api.UpgradeResponse;
-import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.WebSocketAdapter;
-import org.junit.Assert;
+import org.eclipse.jetty.websocket.common.test.Timeouts;
+
 
 /**
  * Testing Socket used on client side WebSocket testing.
@@ -52,8 +52,8 @@ public class JettyTrackingSocket extends WebSocketAdapter
     public CountDownLatch openLatch = new CountDownLatch(1);
     public CountDownLatch closeLatch = new CountDownLatch(1);
     public CountDownLatch dataLatch = new CountDownLatch(1);
-    public EventQueue<String> messageQueue = new EventQueue<>();
-    public EventQueue<Throwable> errorQueue = new EventQueue<>();
+    public LinkedBlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
+    public LinkedBlockingQueue<Throwable> errorQueue = new LinkedBlockingQueue<>();
 
     public void assertClose(int expectedStatusCode, String expectedReason) throws InterruptedException
     {
@@ -63,13 +63,13 @@ public class JettyTrackingSocket extends WebSocketAdapter
 
     public void assertCloseCode(int expectedCode) throws InterruptedException
     {
-        Assert.assertThat("Was Closed",closeLatch.await(50,TimeUnit.MILLISECONDS),is(true));
-        Assert.assertThat("Close Code / Received [" + closeMessage + "]",closeCode,is(expectedCode));
+        assertThat("Was Closed",closeLatch.await(50,TimeUnit.MILLISECONDS),is(true));
+        assertThat("Close Code / Received [" + closeMessage + "]",closeCode,is(expectedCode));
     }
 
     private void assertCloseReason(String expectedReason)
     {
-        Assert.assertThat("Close Reason",closeMessage.toString(),is(expectedReason));
+        assertThat("Close Reason",closeMessage.toString(),is(expectedReason));
     }
 
     public void assertIsOpen() throws InterruptedException
@@ -78,33 +78,22 @@ public class JettyTrackingSocket extends WebSocketAdapter
         assertNotClosed();
     }
 
-    public void assertMessage(String expected)
-    {
-        String actual = messageQueue.poll();
-        Assert.assertEquals("Message",expected,actual);
-    }
-
     public void assertNotClosed()
     {
         LOG.debug("assertNotClosed() - {}", closeLatch.getCount());
-        Assert.assertThat("Closed Latch",closeLatch.getCount(),greaterThanOrEqualTo(1L));
+        assertThat("Closed Latch",closeLatch.getCount(),greaterThanOrEqualTo(1L));
     }
 
     public void assertNotOpened()
     {
         LOG.debug("assertNotOpened() - {}", openLatch.getCount());
-        Assert.assertThat("Open Latch",openLatch.getCount(),greaterThanOrEqualTo(1L));
+        assertThat("Open Latch",openLatch.getCount(),greaterThanOrEqualTo(1L));
     }
 
     public void assertWasOpened() throws InterruptedException
     {
         LOG.debug("assertWasOpened() - {}", openLatch.getCount());
-        Assert.assertThat("Was Opened",openLatch.await(30,TimeUnit.SECONDS),is(true));
-    }
-
-    public void awaitMessage(int expectedMessageCount, TimeUnit timeoutUnit, int timeoutDuration) throws TimeoutException, InterruptedException
-    {
-        messageQueue.awaitEventCount(expectedMessageCount,timeoutDuration,timeoutUnit);
+        assertThat("Was Opened",openLatch.await(30,TimeUnit.SECONDS),is(true));
     }
 
     public void clear()
@@ -143,7 +132,7 @@ public class JettyTrackingSocket extends WebSocketAdapter
     public void onWebSocketError(Throwable cause)
     {
         LOG.debug("onWebSocketError",cause);
-        Assert.assertThat("Error capture",errorQueue.offer(cause),is(true));
+        assertThat("Error capture",errorQueue.offer(cause),is(true));
     }
 
     @Override
@@ -168,18 +157,18 @@ public class JettyTrackingSocket extends WebSocketAdapter
 
     public void waitForClose(int timeoutDuration, TimeUnit timeoutUnit) throws InterruptedException
     {
-        Assert.assertThat("Client Socket Closed",closeLatch.await(timeoutDuration,timeoutUnit),is(true));
+        assertThat("Client Socket Closed",closeLatch.await(timeoutDuration,timeoutUnit),is(true));
     }
 
-    public void waitForConnected(int timeoutDuration, TimeUnit timeoutUnit) throws InterruptedException
+    public void waitForConnected() throws InterruptedException
     {
-        Assert.assertThat("Client Socket Connected",openLatch.await(timeoutDuration,timeoutUnit),is(true));
+        assertThat("Client Socket Connected",openLatch.await(Timeouts.CONNECT,Timeouts.CONNECT_UNIT),is(true));
     }
 
     public void waitForMessage(int timeoutDuration, TimeUnit timeoutUnit) throws InterruptedException
     {
         LOG.debug("Waiting for message");
-        Assert.assertThat("Message Received",dataLatch.await(timeoutDuration,timeoutUnit),is(true));
+        assertThat("Message Received",dataLatch.await(timeoutDuration,timeoutUnit),is(true));
     }
 
     public void close()

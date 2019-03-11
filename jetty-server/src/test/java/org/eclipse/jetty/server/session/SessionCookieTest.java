@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,10 +23,12 @@ import javax.servlet.http.HttpServletRequest;
 
 import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.server.Server;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * SessionCookieTest
@@ -44,80 +46,49 @@ public class SessionCookieTest
             super(manager);
         }
 
-      
-        /** 
-         * @see org.eclipse.jetty.server.session.SessionCache#shutdown()
-         */
         @Override
         public void shutdown()
-        {
-            // TODO Auto-generated method stub
-            
+        {        
         }
 
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#newSession(org.eclipse.jetty.server.session.SessionData)
-         */
+
         @Override
         public Session newSession(SessionData data)
         {
-            // TODO Auto-generated method stub
             return null;
         }
 
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#doGet(String)
-         */
+
         @Override
         public Session doGet(String key)
         {
-            // TODO Auto-generated method stub
             return null;
         }
 
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#doPutIfAbsent(String, Session)
-         */
+
         @Override
         public Session doPutIfAbsent(String key, Session session)
         {
             return null;
         }
-
       
-
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#doDelete(String)
-         */
         @Override
         public Session doDelete(String key)
         {
             return null;
         }
 
-      
-
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#doReplace(java.lang.String, org.eclipse.jetty.server.session.Session, org.eclipse.jetty.server.session.Session)
-         */
         @Override
         public boolean doReplace(String id, Session oldValue, Session newValue)
         {
-            // TODO Auto-generated method stub
             return false;
         }
 
-        /** 
-         * @see org.eclipse.jetty.server.session.AbstractSessionCache#newSession(javax.servlet.http.HttpServletRequest, org.eclipse.jetty.server.session.SessionData)
-         */
         @Override
         public Session newSession(HttpServletRequest request, SessionData data)
         {
-            // TODO Auto-generated method stub
             return null;
         }
-
-   
     }
 
     
@@ -129,18 +100,12 @@ public class SessionCookieTest
             super(server);
         }
 
-        /**
-         * @see org.eclipse.jetty.server.SessionIdManager#isIdInUse(java.lang.String)
-         */
         @Override
         public boolean isIdInUse(String id)
         {
             return false;
         }
 
-        /**
-         * @see org.eclipse.jetty.server.SessionIdManager#expireAll(java.lang.String)
-         */
         @Override
         public void expireAll(String id)
         {
@@ -169,9 +134,9 @@ public class SessionCookieTest
         mgr.setSessionCache(store);
         mgr.setSessionIdManager(idMgr);
         
-        long now = System.currentTimeMillis();
+        long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         
-        Session session = new Session(null, new SessionData("123", "_foo", "0.0.0.0", now, now, now, 30)); 
+        Session session = new Session(mgr, new SessionData("123", "_foo", "0.0.0.0", now, now, now, 30)); 
 
         SessionCookieConfig sessionCookieConfig = mgr.getSessionCookieConfig();
         sessionCookieConfig.setSecure(true);
@@ -204,8 +169,5 @@ public class SessionCookieTest
         //cookie is not secure: not on secured requests and request is secure
         cookie = mgr.getSessionCookie(session, "/foo", true);
         assertFalse(cookie.isSecure());
-
-
     }
-
 }

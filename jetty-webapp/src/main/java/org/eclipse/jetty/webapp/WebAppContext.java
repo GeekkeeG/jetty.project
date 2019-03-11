@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -185,7 +185,7 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
 
     private Map<String, String> _resourceAliases;
     private boolean _ownClassLoader=false;
-    private boolean _configurationDiscovered=true;
+    private boolean _configurationDiscovered=false;
     private boolean _allowDuplicateFragmentNames = false;
     private boolean _throwUnavailableOnStartupException = false;
     
@@ -224,6 +224,17 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
 
     /* ------------------------------------------------------------ */
     /**
+     * @param contextPath The context path
+     * @param webApp The URL or filename of the webapp directory or war file.
+     */
+    public WebAppContext(Resource webApp, String contextPath)
+    {
+        this(null,contextPath,null,null,null,new ErrorPageErrorHandler(),SESSIONS|SECURITY);
+        setWarResource(webApp);
+    }
+    
+    /* ------------------------------------------------------------ */
+    /**
      * @param parent The parent HandlerContainer.
      * @param contextPath The context path
      * @param webApp The URL or filename of the webapp directory or war file.
@@ -232,6 +243,18 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     {
         this(parent,contextPath,null,null,null,new ErrorPageErrorHandler(),SESSIONS|SECURITY);
         setWar(webApp);
+    }
+
+    /* ------------------------------------------------------------ */
+    /**
+     * @param parent The parent HandlerContainer.
+     * @param contextPath The context path
+     * @param webApp The webapp directory or war file.
+     */
+    public WebAppContext(HandlerContainer parent, Resource webApp, String contextPath)
+    {
+        this(parent,contextPath,null,null,null,new ErrorPageErrorHandler(),SESSIONS|SECURITY);
+        setWarResource(webApp);
     }
 
     /* ------------------------------------------------------------ */
@@ -525,14 +548,14 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
             if (isLogUrlOnStart())
                 dumpUrl();
         }
-        catch (Exception e)
+        catch (Throwable t)
         {
-            //start up of the webapp context failed, make sure it is not started
-            LOG.warn("Failed startup of context "+this, e);
-            _unavailableException=e;
-            setAvailable(false);
+            // start up of the webapp context failed, make sure it is not started
+            LOG.warn("Failed startup of context "+this, t);
+            _unavailableException=t;
+            setAvailable(false); // webapp cannot be accessed (results in status code 503)
             if (isThrowUnavailableOnStartupException())
-                throw e;
+                throw t;
         }
     }
 
@@ -583,7 +606,7 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
         {
             String displayName = getDisplayName();
             if (displayName == null)
-                displayName = "WebApp@"+connectors.hashCode();
+                displayName = "WebApp@"+Arrays.hashCode(connectors);
 
             LOG.info(displayName + " at http://" + connectors[i].toString() + getContextPath());
         }
@@ -679,6 +702,10 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     }
 
     /* ------------------------------------------------------------ */
+    /**
+     * @deprecated Use {@link #getServerClasspathPattern()}.{@link ClasspathPattern#add(String)}
+     * @param classOrPackageOrLocation pattern (see {@link ClasspathPattern}
+     */
     @Deprecated
     public void addServerClass(String classOrPackageOrLocation)
     {
@@ -690,13 +717,10 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
 
     /* ------------------------------------------------------------ */
     /** Prepend to the list of Server classes.
-     * @param classOrPackage A fully qualified class name (eg com.foo.MyClass) 
-     * or a qualified package name ending with '.' (eg com.foo.).  If the class 
-     * or package has '-' it is excluded from the server classes and order is thus
-     * important when added system class patterns. This argument may also be a comma 
-     * separated list of classOrPackage patterns.
+     * @param classOrPackage A pattern.
      * @see #setServerClasses(String[])
      * @see <a href="http://www.eclipse.org/jetty/documentation/current/jetty-classloading.html">Jetty Documentation: Classloading</a>
+     * @deprecated Use {@link #getServerClasspathPattern()}.{@link ClasspathPattern#add(String)}
      */
     @Deprecated
     public void prependServerClass(String classOrPackage)
@@ -734,6 +758,11 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     }
 
     /* ------------------------------------------------------------ */
+    /**
+     * 
+     * @param classOrPackage pattern
+     * @deprecated Use {@link #getSystemClasspathPattern()}.{@link ClasspathPattern#add(String)}
+     */
     @Deprecated
     public void addSystemClass(String classOrPackage)
     {
@@ -746,13 +775,10 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
 
     /* ------------------------------------------------------------ */
     /** Prepend to the list of System classes.
-     * @param classOrPackage A fully qualified class name (eg com.foo.MyClass) 
-     * or a qualified package name ending with '.' (eg com.foo.).  If the class 
-     * or package has '-' it is excluded from the system classes and order is thus
-     * important when added system class patterns.This argument may also be a comma 
-     * separated list of classOrPackage patterns.
+     * @param classOrPackage A pattern.
      * @see #setSystemClasses(String[])
      * @see <a href="http://www.eclipse.org/jetty/documentation/current/jetty-classloading.html">Jetty Documentation: Classloading</a>
+     * @deprecated Use {@link #getSystemClasspathPattern()}.{@link ClasspathPattern#add(String)}
      */
     @Deprecated
     public void prependSystemClass(String classOrPackage)
@@ -764,6 +790,11 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     }
     
     /* ------------------------------------------------------------ */
+    /**
+     * @param name class name
+     * @return true if matched by {@link #getServerClasspathPattern()}
+     * @deprecated Use {@link #getServerClasspathPattern()}.{@link ClasspathPattern#match(String)}
+     */
     @Deprecated
     public boolean isServerClass(String name)
     {
@@ -774,6 +805,11 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     }
 
     /* ------------------------------------------------------------ */
+    /**
+     * @param name class name
+     * @return true if matched by {@link #getServerClasspathPattern()}
+     * @deprecated Use {@link #getSystemClasspathPattern()}.{@link ClasspathPattern#match(String)}
+     */
     @Deprecated
     public boolean isSystemClass(String name)
     {
@@ -885,7 +921,9 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
 
     /* ------------------------------------------------------------ */
     /**
-     * @return Returns the war as a file or URL string (Resource)
+     * @return Returns the war as a file or URL string (Resource).
+     * The war may be different to the @link {@link #getResourceBase()}
+     * if the war has been expanded and/or copied.
      */
     @ManagedAttribute(value="war file location", readonly=true)
     public String getWar()
@@ -990,10 +1028,11 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
         if (_configurations.size()>0)
             return;
         
-        if (_configurationClasses.size()==0)
+        if (_configurationClasses.size()==0) {
             _configurationClasses.addAll(Configuration.ClassList.serverDefault(getServer()));
+        }
         for (String configClass : _configurationClasses)
-            _configurations.add((Configuration)Loader.loadClass(configClass).newInstance());
+            _configurations.add((Configuration)Loader.loadClass(configClass).getDeclaredConstructor().newInstance());
     }
 
     /* ------------------------------------------------------------ */
@@ -1028,14 +1067,14 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
             Collections.sort(server_classes);
         }
         
-        dumpBeans(out,indent,
-            Collections.singletonList(new ClassLoaderDump(getClassLoader())),
-            Collections.singletonList(new DumpableCollection("Systemclasses "+this,system_classes)),
-            Collections.singletonList(new DumpableCollection("Serverclasses "+this,server_classes)),
-            Collections.singletonList(new DumpableCollection("Configurations "+this,_configurations)),
-            Collections.singletonList(new DumpableCollection("Handler attributes "+this,((AttributesMap)getAttributes()).getAttributeEntrySet())),
-            Collections.singletonList(new DumpableCollection("Context attributes "+this,((Context)getServletContext()).getAttributeEntrySet())),
-            Collections.singletonList(new DumpableCollection("Initparams "+this,getInitParams().entrySet()))
+        dumpObjects(out,indent,
+            new ClassLoaderDump(getClassLoader()),
+            new DumpableCollection("Systemclasses "+this,system_classes),
+            new DumpableCollection("Serverclasses "+this,server_classes),
+            new DumpableCollection("Configurations "+this,_configurations),
+            new DumpableCollection("Handler attributes "+this,((AttributesMap)getAttributes()).getAttributeEntrySet()),
+            new DumpableCollection("Context attributes "+this,((Context)getServletContext()).getAttributeEntrySet()),
+            new DumpableCollection("Initparams "+this,getInitParams().entrySet())
             );
     }
     
@@ -1152,25 +1191,7 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
         super.setEventListeners(eventListeners);
     }
 
-    /* ------------------------------------------------------------ */
-    /** Add EventListener
-     * Convenience method that calls {@link #setEventListeners(EventListener[])}
-     * @param listener the listener to add
-     */
-    @Override
-    public void addEventListener(EventListener listener)
-    {
-        super.addEventListener(listener);
-        if ((listener instanceof HttpSessionActivationListener)
-            || (listener instanceof HttpSessionAttributeListener)
-            || (listener instanceof HttpSessionBindingListener)
-            || (listener instanceof HttpSessionListener)
-            || (listener instanceof HttpSessionIdListener))
-        {
-            if (_sessionHandler!=null)
-                _sessionHandler.addEventListener(listener);
-        }
-    }
+
     
     @Override
     public void removeEventListener(EventListener listener)
@@ -1334,11 +1355,25 @@ public class WebAppContext extends ServletContextHandler implements WebAppClassL
     
     /* ------------------------------------------------------------ */
     /**
-     * @param war The war to set as a file name or URL
+     * Set the war of the webapp. From this value a {@link #setResourceBase(String)}
+     * value is computed by {@link WebInfConfiguration}, which may be changed from
+     * the war URI by unpacking and/or copying.
+     * @param war The war to set as a file name or URL.
      */
     public void setWar(String war)
     {
         _war = war;
+    }
+
+    /* ------------------------------------------------------------ */
+    /**
+     * Set the war of the webapp as a {@link Resource}. 
+     * @see #setWar(String)
+     * @param war The war to set as a Resource.
+     */
+    public void setWarResource(Resource war)
+    {
+        setWar(war==null?null:war.toString());
     }
 
     /* ------------------------------------------------------------ */

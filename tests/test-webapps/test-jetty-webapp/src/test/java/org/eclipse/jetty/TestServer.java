@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,6 +21,9 @@ package org.eclipse.jetty;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -28,11 +31,11 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.security.HashLoginService;
+import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.ForwardedRequestCustomizer;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
-import org.eclipse.jetty.server.NCSARequestLog;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
@@ -42,18 +45,17 @@ import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.server.handler.HandlerWrapper;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.ResourceHandler;
-import org.eclipse.jetty.server.session.FileSessionDataStore;
 import org.eclipse.jetty.server.session.DefaultSessionCache;
+import org.eclipse.jetty.server.session.FileSessionDataStore;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.log.StdErrLog;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.webapp.WebAppContext;
-import org.junit.Ignore;
+import org.junit.jupiter.api.Disabled;
 
-@Ignore("Not a test case")
+@Disabled("Not a test case")
 public class TestServer
 {
     private static final Logger LOG = Log.getLogger(TestServer.class);
@@ -62,7 +64,12 @@ public class TestServer
     {
         ((StdErrLog)Log.getLog()).setSource(false);
 
-        String jetty_root = "../../..";
+        // TODO don't depend on this file structure
+        Path jetty_root = FileSystems.getDefault().getPath(".").toAbsolutePath().normalize();
+        if (!Files.exists(jetty_root.resolve("VERSION.txt")))
+            jetty_root = FileSystems.getDefault().getPath("../../..").toAbsolutePath().normalize();
+        if (!Files.exists(jetty_root.resolve("VERSION.txt")))
+            throw new IllegalArgumentException(jetty_root.toString());
 
         // Setup Threadpool
         QueuedThreadPool threadPool = new QueuedThreadPool();
@@ -98,9 +105,8 @@ public class TestServer
         // Handlers
         HandlerCollection handlers = new HandlerCollection();
         ContextHandlerCollection contexts = new ContextHandlerCollection();
-        RequestLogHandler requestLogHandler = new RequestLogHandler();
         handlers.setHandlers(new Handler[]
-        { contexts, new DefaultHandler(), requestLogHandler });
+        { contexts, new DefaultHandler() });
 
         // Add restart handler to test the ability to save sessions and restart
         RestartHandler restart = new RestartHandler();
@@ -112,20 +118,19 @@ public class TestServer
         // Setup context
         HashLoginService login = new HashLoginService();
         login.setName("Test Realm");
-        login.setConfig(jetty_root + "/tests/test-webapps/test-jetty-webapp/src/main/config/demo-base/etc/realm.properties");
+        login.setConfig(jetty_root.resolve("tests/test-webapps/test-jetty-webapp/src/main/config/demo-base/etc/realm.properties").toString());
         server.addBean(login);
 
         File log=File.createTempFile("jetty-yyyy_mm_dd", "log");
-        NCSARequestLog requestLog = new NCSARequestLog(log.toString());
-        requestLog.setExtended(false);
-        requestLogHandler.setRequestLog(requestLog);
+        CustomRequestLog requestLog = new CustomRequestLog(log.toString());
+        server.setRequestLog(requestLog);
 
         server.setStopAtShutdown(true);
 
         WebAppContext webapp = new WebAppContext();
         webapp.setContextPath("/test");
         webapp.setParentLoaderPriority(true);
-        webapp.setResourceBase("./src/main/webapp");
+        webapp.setResourceBase(jetty_root.resolve("tests/test-webapps/test-jetty-webapp/src/main/webapp").toString());
         webapp.setAttribute("testAttribute","testValue");
         File sessiondir=File.createTempFile("sessions",null);
         if (sessiondir.exists())
@@ -141,12 +146,13 @@ public class TestServer
         contexts.addHandler(webapp);
 
         ContextHandler srcroot = new ContextHandler();
-        srcroot.setResourceBase(".");
+        srcroot.setResourceBase(jetty_root.resolve("tests/test-webapps/test-jetty-webapp/src").toString());
         srcroot.setHandler(new ResourceHandler());
         srcroot.setContextPath("/src");
         contexts.addHandler(srcroot);
 
         server.start();
+        server.dumpStdErr();
         server.join();
     }
 

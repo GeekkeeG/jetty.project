@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -62,22 +62,21 @@ public class PathWatcherDemo implements PathWatcher.Listener
     {
         PathWatcher watcher = new PathWatcher();
         //watcher.addListener(new PathWatcherDemo());
-        watcher.addListener (new PathWatcher.EventListListener(){
-
-            @Override
-            public void onPathWatchEvents(List<PathWatchEvent> events)
-            {
-               if (events == null)
-                   LOG.warn("Null events received");
-               if (events.isEmpty())
-                   LOG.warn("Empty events received");
-               
+        watcher.addListener ((PathWatcher.EventListListener) events -> {
+           if (events == null)
+           {
+               LOG.warn("Null events received");
+           }
+           else if (events.isEmpty())
+           {
+               LOG.warn("Empty events received");
+           }
+           else
+           {
                LOG.info("Bulk notification received");
-               for (PathWatchEvent e:events)
+               for (PathWatchEvent e : events)
                    onPathWatchEvent(e);
-                
-            }
-            
+           }
         });
         
         watcher.setNotifyExistingOnStart(false);

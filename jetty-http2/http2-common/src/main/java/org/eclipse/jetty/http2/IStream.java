@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -32,12 +32,17 @@ import org.eclipse.jetty.util.Callback;
 public interface IStream extends Stream, Closeable
 {
     /**
-     * <p>The constant used as attribute key to store/retrieve the HTTP
-     * channel associated with this stream</p>
-     *
-     * @see #setAttribute(String, Object)
+     * @return the object attached to this stream
+     * @see #setAttachment(Object)
      */
-    public static final String CHANNEL_ATTRIBUTE = IStream.class.getName() + ".channel";
+    public Object getAttachment();
+
+    /**
+     * Attaches the given object to this stream for later retrieval.
+     *
+     * @param attachment the object to attach to this stream
+     */
+    public void setAttachment(Object attachment);
 
     /**
      * @return whether this stream is local or remote
@@ -49,7 +54,7 @@ public interface IStream extends Stream, Closeable
 
     /**
      * @return the {@link org.eclipse.jetty.http2.api.Stream.Listener} associated with this stream
-     * @see #setListener(Listener)
+     * @see #setListener(Stream.Listener)
      */
     public Listener getListener();
 
@@ -71,12 +76,10 @@ public interface IStream extends Stream, Closeable
      * <p>Updates the close state of this stream.</p>
      *
      * @param update whether to update the close state
-     * @param local  whether the update comes from a local operation
-     *               (such as sending a frame that ends the stream)
-     *               or a remote operation (such as receiving a frame
+     * @param event  the event that caused the close state update
      * @return whether the stream has been fully closed by this invocation
      */
-    public boolean updateClose(boolean update, boolean local);
+    public boolean updateClose(boolean update, CloseState.Event event);
 
     /**
      * <p>Forcibly closes this stream.</p>
@@ -105,4 +108,10 @@ public interface IStream extends Stream, Closeable
      * {@link #getIdleTimeout() idle timeout} is postponed.</p>
      */
     public void notIdle();
+
+    /**
+     * @return whether the stream is closed remotely.
+     * @see #isClosed()
+     */
+    boolean isRemotelyClosed();
 }

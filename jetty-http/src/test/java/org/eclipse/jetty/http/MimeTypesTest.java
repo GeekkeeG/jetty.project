@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,12 +19,12 @@
 package org.eclipse.jetty.http;
 
 import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.hamcrest.MatcherAssert.assertThat;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class MimeTypesTest
 {
@@ -74,8 +74,8 @@ public class MimeTypesTest
         MimeTypes mimetypes = new MimeTypes();
         String contentType = mimetypes.getMimeByExtension(filename);
         String prefix = "MimeTypes.getMimeByExtension(" + filename + ")";
-        assertNotNull(prefix,contentType);
-        assertEquals(prefix,expectedMimeType,contentType);
+        assertNotNull(contentType,prefix);
+        assertEquals(expectedMimeType,contentType,prefix);
     }
     
     private void assertCharsetFromContentType(String contentType, String expectedCharset)

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,6 +23,8 @@ import java.io.InputStream;
 import java.io.Reader;
 import java.nio.ByteBuffer;
 
+import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.websocket.api.BatchMode;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
 import org.eclipse.jetty.websocket.api.annotations.WebSocket;
@@ -39,6 +41,7 @@ import org.eclipse.jetty.websocket.common.message.SimpleTextMessage;
  */
 public class JettyAnnotatedEventDriver extends AbstractEventDriver
 {
+    private static final Logger LOG = Log.getLogger(JettyAnnotatedEventDriver.class);
     private final JettyAnnotatedMetadata events;
     private boolean hasCloseBeenCalled = false;
     private BatchMode batchMode;
@@ -155,6 +158,10 @@ public class JettyAnnotatedEventDriver extends AbstractEventDriver
         if (events.onError != null)
         {
             events.onError.call(websocket,session,cause);
+        }
+        else
+        {
+            LOG.warn("Unable to report throwable to websocket (no @OnWebSocketError handler declared): " + websocket.getClass().getName(), cause);
         }
     }
 

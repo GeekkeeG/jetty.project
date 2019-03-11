@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,12 +18,6 @@
 
 package org.eclipse.jetty.start;
 
-import static org.eclipse.jetty.start.UsageException.ERR_BAD_GRAPH;
-import static org.eclipse.jetty.start.UsageException.ERR_BAD_STOP_PROPS;
-import static org.eclipse.jetty.start.UsageException.ERR_INVOKE_MAIN;
-import static org.eclipse.jetty.start.UsageException.ERR_NOT_STOPPED;
-import static org.eclipse.jetty.start.UsageException.ERR_UNKNOWN;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -40,11 +34,15 @@ import java.net.SocketTimeoutException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
 
 import org.eclipse.jetty.start.Props.Prop;
 import org.eclipse.jetty.start.config.CommandLineConfigSource;
 import org.eclipse.jetty.start.config.ConfigSource;
+
+import static org.eclipse.jetty.start.UsageException.ERR_BAD_STOP_PROPS;
+import static org.eclipse.jetty.start.UsageException.ERR_INVOKE_MAIN;
+import static org.eclipse.jetty.start.UsageException.ERR_NOT_STOPPED;
+import static org.eclipse.jetty.start.UsageException.ERR_UNKNOWN;
 
 /**
  * Main start class.
@@ -295,6 +293,20 @@ public class Main
         StartArgs args = new StartArgs(baseHome);
         args.parse(baseHome.getConfigSources());
 
+        Props props = baseHome.getConfigSources().getProps();
+        Prop home = props.getProp(BaseHome.JETTY_HOME);
+        if (!args.getProperties().containsKey(BaseHome.JETTY_HOME))
+            args.getProperties().setProperty(home);
+        args.getProperties().setProperty(BaseHome.JETTY_HOME+".uri",
+            normalizeURI(baseHome.getHomePath().toUri().toString()),
+            home.source);
+        Prop base = props.getProp(BaseHome.JETTY_BASE);
+        if (!args.getProperties().containsKey(BaseHome.JETTY_BASE))
+            args.getProperties().setProperty(base);
+        args.getProperties().setProperty(BaseHome.JETTY_BASE+".uri",
+            normalizeURI(baseHome.getBasePath().toUri().toString()),
+            base.source);
+        
         // ------------------------------------------------------------
         // 3) Module Registration
         Modules modules = new Modules(baseHome,args);
@@ -341,22 +353,31 @@ public class Main
         // ------------------------------------------------------------
         // 6) Resolve Extra XMLs
         args.resolveExtraXmls();
-        
+
         // ------------------------------------------------------------
-        // 9) Resolve Property Files
+        // 7) JPMS Expansion
+        args.expandJPMS(activeModules);
+
+        // ------------------------------------------------------------
+        // 8) Resolve Property Files
         args.resolvePropertyFiles();
         
         return args;
     }
     
+    private String normalizeURI(String uri)
+    {
+        if (uri.endsWith("/"))
+            return uri.substring(0,uri.length()-1);
+        return uri;
+    }
+
     public void start(StartArgs args) throws IOException, InterruptedException
     {
         StartLog.debug("StartArgs: %s",args);
 
         // Get Desired Classpath based on user provided Active Options.
         Classpath classpath = args.getClasspath();
-
-        System.setProperty("java.class.path",classpath.toString());
 
         // Show the usage information and return
         if (args.isHelp())
@@ -408,25 +429,8 @@ public class Main
         {
             for (ConfigSource config : baseHome.getConfigSources())
             {
-                System.out.printf("ConfigSource %s%n",config.getId());
                 for (StartIni ini : config.getStartInis())
-                {
-                    for (String line : ini.getAllLines())
-                    {
-                        Matcher m = Module.SET_PROPERTY.matcher(line);
-                        if (m.matches() && m.groupCount()==3)
-                        {
-                            String name = m.group(2);
-                            String value = m.group(3);
-                            Prop p = args.getProperties().getProp(name);
-                            if (p!=null && ("#".equals(m.group(1)) || !value.equals(p.value)))
-                            {
-                                ini.update(baseHome,args.getProperties());
-                                break;
-                            }
-                        }
-                    }
-                }
+                    ini.update(baseHome,args.getProperties());
             }
         }
         
@@ -494,10 +498,10 @@ public class Main
 
     private void doStop(StartArgs args)
     {
-        Props.Prop stopHostProp = args.getProperties().getProp("STOP.HOST", true);
-        Props.Prop stopPortProp = args.getProperties().getProp("STOP.PORT", true);
-        Props.Prop stopKeyProp = args.getProperties().getProp("STOP.KEY", true);
-        Props.Prop stopWaitProp = args.getProperties().getProp("STOP.WAIT", true);
+        Prop stopHostProp = args.getProperties().getProp("STOP.HOST", true);
+        Prop stopPortProp = args.getProperties().getProp("STOP.PORT", true);
+        Prop stopKeyProp = args.getProperties().getProp("STOP.KEY", true);
+        Prop stopWaitProp = args.getProperties().getProp("STOP.WAIT", true);
         
         String stopHost = "127.0.0.1";
         int stopPort = -1;

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -84,6 +84,7 @@ public class Log
 
         AccessController.doPrivileged(new PrivilegedAction<Object>()
         {
+            @Override
             public Object run()
             {
                 /* First see if the jetty-logging.properties object exists in the classpath.
@@ -171,10 +172,10 @@ public class Log
 
             try
             {
-                Class<?> log_class = __logClass==null?null:Loader.loadClass(__logClass);
+                Class<?> log_class = __logClass==null?null:Loader.loadClass(Log.class,__logClass);
                 if (LOG == null || (log_class!=null && !LOG.getClass().equals(log_class)))
                 {
-                    LOG = (Logger)log_class.newInstance();
+                    LOG = (Logger)log_class.getDeclaredConstructor().newInstance();
                     if(announce)
                     {
                         LOG.debug("Logging to {} via {}", LOG, log_class.getName());
@@ -207,7 +208,7 @@ public class Log
             log_class = StdErrLog.class;
             LOG = new StdErrLog();
 
-            Boolean announce = Boolean.parseBoolean(__props.getProperty("org.eclipse.jetty.util.log.announce", "true"));
+            boolean announce = Boolean.parseBoolean(__props.getProperty("org.eclipse.jetty.util.log.announce", "true"));
             if(announce)
             {
                 LOG.debug("Logging to {} via {}", LOG, log_class.getName());

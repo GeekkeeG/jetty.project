@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,11 @@
 
 package org.eclipse.jetty.util.statistic;
 
-import static org.junit.Assert.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.hamcrest.Matchers;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 /* ------------------------------------------------------------ */
@@ -55,18 +55,19 @@ public class SampleStatisticTest
         {
             stats.reset();
             for (long x : data[d])
-                stats.set(x);
+                stats.record(x);
 
-            assertEquals("count"+d,data[d].length, (int)stats.getCount());
+            assertEquals(data[d].length, (int)stats.getCount(), "count"+d);
             assertNearEnough("mean"+d,results[d][0], stats.getMean());
             assertNearEnough("stddev"+d,results[d][1], stats.getStdDev());
         }
+        System.err.println(stats);
     }
 
     private void assertNearEnough(String test,double expected, double actual)
     {
-        Assert.assertThat(actual,Matchers.greaterThan(expected-0.1D));
-        Assert.assertThat(actual,Matchers.lessThan(expected+0.1D));
+        assertThat(actual,Matchers.greaterThan(expected-0.1D));
+        assertThat(actual,Matchers.lessThan(expected+0.1D));
     }
 
 }

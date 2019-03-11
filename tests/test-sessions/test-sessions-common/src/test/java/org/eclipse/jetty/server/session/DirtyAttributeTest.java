@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,13 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -38,8 +40,7 @@ import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 /**
@@ -98,6 +99,9 @@ public class DirtyAttributeTest
         ServletContextHandler ctxA = server.addContext("/mod");
         ctxA.addServlet(TestDirtyServlet.class, "/test");
         
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        ctxA.addEventListener(scopeListener);
+        
         server.start();
         int port=server.getPort();
         try
@@ -106,41 +110,50 @@ public class DirtyAttributeTest
             client.start();
             try
             {
-                // Perform a request to create a session              
+                // Perform a request to create a session
                 ContentResponse response = client.GET("http://localhost:" + port + "/mod/test?action=create");
                 
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
                 assertTrue(sessionCookie != null);
-                // Mangle the cookie, replacing Path with $Path, etc.
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
                 
-                //do another request to change the session attribute
-                Request request = client.newRequest("http://localhost:" + port + "/mod/test?action=setA");
-                request.header("Cookie", sessionCookie);
-                response = request.send();
 
+
+                //do another request to change the session attribute
+                CountDownLatch latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
+                Request request = client.newRequest("http://localhost:" + port + "/mod/test?action=setA");
+                response = request.send();
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
+                
+                //ensure request fully finished processing
+                latch.await(5, TimeUnit.SECONDS);
+                
                 A_VALUE.assertPassivatesEquals(1);
                 A_VALUE.assertActivatesEquals(1);
                 A_VALUE.assertBindsEquals(1);
                 A_VALUE.assertUnbindsEquals(0);
                 
-                //do another request using the cookie to try changing the session attribute to the same value again              
+                //do another request using the cookie to try changing the session attribute to the same value again  
+                latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
                 request= client.newRequest("http://localhost:" + port + "/mod/test?action=setA");
-                request.header("Cookie", sessionCookie);
                 response = request.send();
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
+                //ensure request fully finished processing
+                latch.await(5, TimeUnit.SECONDS);
                 A_VALUE.assertPassivatesEquals(2);
                 A_VALUE.assertActivatesEquals(2);
                 A_VALUE.assertBindsEquals(1);
                 A_VALUE.assertUnbindsEquals(0);
                 
-                //do another request using the cookie and change to a different value             
+                //do another request using the cookie and change to a different value
+                latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
                 request= client.newRequest("http://localhost:" + port + "/mod/test?action=setB");
-                request.header("Cookie", sessionCookie);
                 response = request.send();
                 assertEquals(HttpServletResponse.SC_OK,response.getStatus());
+                latch.await(5, TimeUnit.SECONDS);
                 B_VALUE.assertPassivatesEquals(1);
                 B_VALUE.assertActivatesEquals(1);
                 B_VALUE.assertBindsEquals(1);
@@ -172,6 +185,7 @@ public class DirtyAttributeTest
         /** 
          * @see javax.servlet.http.HttpSessionActivationListener#sessionWillPassivate(javax.servlet.http.HttpSessionEvent)
          */
+        @Override
         public void sessionWillPassivate(HttpSessionEvent se)
         {
             ++passivates;
@@ -180,6 +194,7 @@ public class DirtyAttributeTest
         /** 
          * @see javax.servlet.http.HttpSessionActivationListener#sessionDidActivate(javax.servlet.http.HttpSessionEvent)
          */
+        @Override
         public void sessionDidActivate(HttpSessionEvent se)
         {
            ++activates;
@@ -209,6 +224,7 @@ public class DirtyAttributeTest
         /** 
          * @see javax.servlet.http.HttpSessionBindingListener#valueBound(javax.servlet.http.HttpSessionBindingEvent)
          */
+        @Override
         public void valueBound(HttpSessionBindingEvent event)
         {
             ++binds;
@@ -217,6 +233,7 @@ public class DirtyAttributeTest
         /** 
          * @see javax.servlet.http.HttpSessionBindingListener#valueUnbound(javax.servlet.http.HttpSessionBindingEvent)
          */
+        @Override
         public void valueUnbound(HttpSessionBindingEvent event)
         {
             ++unbinds;

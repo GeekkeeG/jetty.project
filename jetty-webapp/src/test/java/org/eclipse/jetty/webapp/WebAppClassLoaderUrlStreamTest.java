@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,11 +23,9 @@ import java.net.URLStreamHandlerFactory;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Ignore;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 
-@Ignore("Not suitable for testing on CI (as URL object is modified)")
 public class WebAppClassLoaderUrlStreamTest extends WebAppClassLoaderTest
 {
     public static class URLHandlers implements URLStreamHandlerFactory
@@ -63,7 +61,7 @@ public class WebAppClassLoaderUrlStreamTest extends WebAppClassLoaderTest
                     try
                     {
                         Class<?> clazz = Class.forName(className, false, classLoader);
-                        handler = (URLStreamHandler) clazz.newInstance();
+                        handler = (URLStreamHandler) clazz.getDeclaredConstructor().newInstance();
                         break;
                     }
                     catch (Exception ignore)
@@ -100,13 +98,14 @@ public class WebAppClassLoaderUrlStreamTest extends WebAppClassLoaderTest
         }
     }
     
-    @After
+    @AfterEach
     public void cleanupURLStreamHandlerFactory()
     {
         URLStreamHandlerUtil.setFactory(null);
     }
     
-    @Before
+    @BeforeEach
+    @Override
     public void init() throws Exception
     {
         super.init();

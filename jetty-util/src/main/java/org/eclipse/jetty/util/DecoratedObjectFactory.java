@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,7 @@
 
 package org.eclipse.jetty.util;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -58,13 +59,14 @@ public class DecoratedObjectFactory implements Iterable<Decorator>
         this.decorators.clear();
     }
 
-    public <T> T createInstance(Class<T> clazz) throws InstantiationException, IllegalAccessException
+    public <T> T createInstance(Class<T> clazz) throws InstantiationException, IllegalAccessException,
+        NoSuchMethodException, InvocationTargetException
     {
         if (LOG.isDebugEnabled())
         {
             LOG.debug("Creating Instance: " + clazz);
         }
-        T o = clazz.newInstance();
+        T o = clazz.getDeclaredConstructor().newInstance();
         return decorate(o);
     }
 

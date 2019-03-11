@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,6 +18,10 @@
 
 package org.eclipse.jetty.servlet;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.StringStartsWith.startsWith;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,9 +38,8 @@ import org.eclipse.jetty.server.LocalConnector;
 import org.eclipse.jetty.server.Server;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 
 @SuppressWarnings("serial")
@@ -61,7 +64,7 @@ public class DispatcherForwardTest
         server.start();
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Throwable
     {
         for (Throwable failure : failures)
@@ -74,7 +77,7 @@ public class DispatcherForwardTest
     {
         try
         {
-            Assert.assertThat(item,matcher);
+            assertThat(item,matcher);
         }
         catch(Throwable th)
         {
@@ -123,9 +126,9 @@ public class DispatcherForwardTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(response.startsWith("HTTP/1.1 200"), response);
     }
 
     @Test
@@ -173,9 +176,9 @@ public class DispatcherForwardTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(response.startsWith("HTTP/1.1 200"), response);
     }
 
     @Test
@@ -222,9 +225,9 @@ public class DispatcherForwardTest
                 "Host: localhost\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(response.startsWith("HTTP/1.1 200"), response);
     }
 
     @Test
@@ -278,9 +281,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     @Test
@@ -335,9 +338,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     @Test
@@ -391,9 +394,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     @Test
@@ -450,9 +453,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     @Test
@@ -497,9 +500,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     @Test
@@ -547,9 +550,9 @@ public class DispatcherForwardTest
                 "Connection: close\r\n" +
                 "\r\n" +
                 form;
-        String response = connector.getResponses(request);
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(response, response.startsWith("HTTP/1.1 200"));
+        String response = connector.getResponse(request);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertThat(response, startsWith("HTTP/1.1 200"));
     }
 
     // TODO: add multipart tests

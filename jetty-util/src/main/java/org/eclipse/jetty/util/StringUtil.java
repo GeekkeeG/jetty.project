@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -585,6 +585,7 @@ public class StringUtil
      * @param sidBytes the SID bytes to build from
      * @return the string SID
      */
+    @Deprecated
     public static String sidBytesToString(byte[] sidBytes)
     {
         StringBuilder sidString = new StringBuilder();
@@ -634,6 +635,7 @@ public class StringUtil
      * @param sidString the string SID
      * @return the binary SID
      */
+    @Deprecated
     public static byte[] sidStringToBytes( String sidString )
     {
         String[] sidTokens = sidString.split("-");
@@ -1054,5 +1056,4 @@ public class StringUtil
     {
         return object==null?null:String.valueOf(object);
     }
-
 }

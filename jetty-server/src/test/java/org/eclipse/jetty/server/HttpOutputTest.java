@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,8 +20,9 @@ package org.eclipse.jetty.server;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -45,10 +46,10 @@ import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.resource.Resource;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  *
@@ -60,7 +61,7 @@ public class HttpOutputTest
     private ContentHandler _handler;
     private HotSwapHandler _swap;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         _server = new Server();
@@ -79,7 +80,7 @@ public class HttpOutputTest
         _server.start();
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         _server.stop();
@@ -118,9 +119,9 @@ public class HttpOutputTest
         assertThat(response,containsString("\r\nXXXXXXXXXXXXXXXXXXXXXXXXXXX"));
         
         for (int i=0;i<4*1024;i++)
-            assertEquals("i="+i,(byte)0x99,buffer[i]);
+            assertEquals((byte)0x99, buffer[i], "i="+i);
         for (int i=12*1024;i<16*1024;i++)
-            assertEquals("i="+i,(byte)0x66,buffer[i]);
+            assertEquals((byte)0x66, buffer[i], "i="+i);
     }
     
     @Test
@@ -579,7 +580,7 @@ public class HttpOutputTest
         _handler._byteBuffer = BufferUtil.allocateDirect(8192);
         _handler._async = true;
 
-        String response = _connector.getResponses("GET / HTTP/1.0\nHost: localhost:80\n\n");
+        String response = _connector.getResponse("GET / HTTP/1.0\nHost: localhost:80\n\n");
         assertThat(response, containsString("HTTP/1.1 200 OK"));
         assertThat(response, Matchers.not(containsString("Content-Length")));
         assertThat(response, endsWith(toUTF8String(big)));
@@ -751,7 +752,7 @@ public class HttpOutputTest
                             
                             while (out.isReady())
                             {
-                                Assert.assertTrue(out.isReady());
+                                assertTrue(out.isReady());
                                 int len=_content.remaining();
                                 if (len>_arrayBuffer.length)
                                     len=_arrayBuffer.length;
@@ -767,7 +768,7 @@ public class HttpOutputTest
                                 else
                                     out.write(_arrayBuffer,0,len);
                             }
-                            // Assert.assertFalse(out.isReady());
+                            // assertFalse(out.isReady());
                         }
 
                         @Override
@@ -812,8 +813,8 @@ public class HttpOutputTest
                             
                             while (out.isReady())
                             {
-                                Assert.assertTrue(isFirstWrite || !_byteBuffer.hasRemaining());
-                                Assert.assertTrue(out.isReady());
+                                assertTrue(isFirstWrite || !_byteBuffer.hasRemaining());
+                                assertTrue(out.isReady());
                                 if(BufferUtil.isEmpty(_content))
                                 {
                                     async.complete();

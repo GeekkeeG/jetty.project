@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -45,7 +45,7 @@ public abstract class NegotiatingClientConnection extends AbstractConnection
         this.context = context;
     }
 
-    protected SSLEngine getSSLEngine()
+    public SSLEngine getSSLEngine()
     {
         return engine;
     }
@@ -80,13 +80,17 @@ public abstract class NegotiatingClientConnection extends AbstractConnection
         while (true)
         {
             int filled = fill();
-            if (filled == 0 && !completed)
-                fillInterested();
-            if (filled <= 0 || completed)
+            if (completed || filled < 0)
+            {
+                replaceConnection();
                 break;
+            }
+            if (filled == 0)
+            {
+                fillInterested();
+                break;
+            }
         }
-        if (completed)
-            replaceConnection();
     }
 
     private int fill()

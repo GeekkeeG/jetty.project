@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,9 +21,9 @@ package org.eclipse.jetty.server;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Date;
 import java.util.Enumeration;
@@ -35,22 +35,18 @@ import org.eclipse.jetty.http.HttpParser;
 import org.eclipse.jetty.server.LocalConnector.LocalEndPoint;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.toolchain.test.AdvancedRunner;
 import org.eclipse.jetty.util.log.StacklessLogging;
-import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
 
-@RunWith(AdvancedRunner.class)
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 public class PartialRFC2616Test
 {
     private Server server;
     private LocalConnector connector;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         server = new Server();
@@ -77,7 +73,7 @@ public class PartialRFC2616Test
         server.start();
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         server.stop();
@@ -98,11 +94,11 @@ public class PartialRFC2616Test
             Date d2=new Date(fields.getDateField("D2"));
             Date d3=new Date(fields.getDateField("D3"));
 
-            assertEquals("3.3.1 RFC 822 RFC 850",d2,d1);
-            assertEquals("3.3.1 RFC 850 ANSI C",d3,d2);
+            assertEquals(d2, d1, "3.3.1 RFC 822 RFC 850");
+            assertEquals(d3, d2, "3.3.1 RFC 850 ANSI C");
 
             fields.putDateField("Date",d1.getTime());
-            assertEquals("3.3.1 RFC 822 preferred","Sun, 06 Nov 1994 08:49:37 GMT",fields.get("Date"));
+            assertEquals("Sun, 06 Nov 1994 08:49:37 GMT", fields.get("Date"), "3.3.1 RFC 822 preferred");
         }
         catch (Exception e)
         {
@@ -262,13 +258,46 @@ public class PartialRFC2616Test
         fields.put("Q","bbb;q=0.5,aaa,ccc;q=0.002,d;q=0,e;q=0.0001,ddd;q=0.001,aa2,abb;q=0.7");
         Enumeration<String> qualities=fields.getValues("Q",", \t");
         List<String> list=HttpFields.qualityList(qualities);
-        assertEquals("Quality parameters","aaa",HttpFields.valueParameters(list.get(0),null));
-        assertEquals("Quality parameters","aa2",HttpFields.valueParameters(list.get(1),null));
-        assertEquals("Quality parameters","abb",HttpFields.valueParameters(list.get(2),null));
-        assertEquals("Quality parameters","bbb",HttpFields.valueParameters(list.get(3),null));
-        assertEquals("Quality parameters","ccc",HttpFields.valueParameters(list.get(4),null));
-        assertEquals("Quality parameters","ddd",HttpFields.valueParameters(list.get(5),null));
+        assertEquals("aaa",HttpFields.valueParameters(list.get(0), null), "Quality parameters");
+        assertEquals("aa2",HttpFields.valueParameters(list.get(1), null), "Quality parameters");
+        assertEquals("abb",HttpFields.valueParameters(list.get(2), null), "Quality parameters");
+        assertEquals("bbb",HttpFields.valueParameters(list.get(3), null), "Quality parameters");
+        assertEquals("ccc",HttpFields.valueParameters(list.get(4), null), "Quality parameters");
+        assertEquals("ddd",HttpFields.valueParameters(list.get(5), null), "Quality parameters");
     }
+    
+
+
+    @Test
+    public void test4_1() throws Exception
+    {
+        int offset=0;
+        // If _content length not used, second request will not be read.
+        String response = connector.getResponses(
+                "\r\n" +
+                        "GET /R1 HTTP/1.1\r\n" +
+                        "Host: localhost\r\n" +
+                        "\r\n" +
+                        "\r\n" +
+                        "\r\n" +
+                        "\r\n" +
+                        "GET /R2 HTTP/1.1\r\n" +
+                        "Host: localhost\r\n" +
+                        "\r\n" +
+                        " \r\n" +
+                        "GET /R3 HTTP/1.1\r\n" +
+                        "Host: localhost\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n" 
+                );
+        offset=checkContains(response,offset,"HTTP/1.1 200 OK","2. identity")+10;
+        offset=checkContains(response,offset,"/R1","2. identity")+3;
+        offset=checkContains(response,offset,"HTTP/1.1 200 OK","2. identity")+10;
+        offset=checkContains(response,offset,"/R2","2. identity")+3;
+        checkNotContained(response,offset,"HTTP/1.1 200 OK","2. identity");
+        checkNotContained(response,offset,"/R3","2. identity");
+    }
+
 
     @Test
     public void test4_4_2() throws Exception
@@ -303,8 +332,8 @@ public class PartialRFC2616Test
     @Test
     public void test4_4_3() throws Exception
     {
-        // _content length is ignored, as chunking is used. If it is
-        // not ignored, the second request wont be seen.
+        // Due to smuggling concerns, handling has been changed to
+        // treat content length and chunking as a bad request.
         int offset=0;
         String response;
         LocalEndPoint endp=connector.executeRequest(
@@ -328,23 +357,16 @@ public class PartialRFC2616Test
                         "Content-Length: 6\n" +
                         "\n" +
                         "abcdef");
-        offset=0;
         response = endp.getResponse();
-        offset=checkContains(response,offset,"HTTP/1.1 200 OK","3. ignore c-l")+1;
-        offset=checkContains(response,offset,"/R1","3. ignore c-l")+1;
-        offset=checkContains(response,offset,"123456","3. ignore c-l")+1;
-        offset=0;
-        response = endp.getResponse();
-        offset=checkContains(response,offset,"HTTP/1.1 200 OK","3. ignore c-l")+1;
-        offset=checkContains(response,offset,"/R2","3. _content-length")+1;
-        offset=checkContains(response,offset,"abcdef","3. _content-length")+1;
+        offset=checkContains(response,offset,"HTTP/1.1 400 Bad","3. ignore c-l")+1;
+        checkNotContained(response,offset,"/R2","3. _content-length");
     }
 
     @Test
     public void test4_4_4() throws Exception
     {
         // No _content length
-        assertTrue("Skip 411 checks as IE breaks this rule",true);
+        assertTrue(true, "Skip 411 checks as IE breaks this rule");
         // offset=0; connector.reopen();
         // response=connector.getResponse("GET /R2 HTTP/1.1\n"+
         // "Host: localhost\n"+
@@ -552,7 +574,7 @@ public class PartialRFC2616Test
             String head=connector.getResponse("HEAD /R1 HTTP/1.0\n"+"Host: localhost\n"+"\n");
             checkContains(head,0,"HTTP/1.1 200","HEAD");
             checkContains(head,0,"Content-Type: text/html","HEAD _content");
-            assertEquals("HEAD no body",-1,head.indexOf("<html>"));
+            assertEquals(-1, head.indexOf("<html>"), "HEAD no body");
         }
         catch (Exception e)
         {
@@ -658,13 +680,13 @@ public class PartialRFC2616Test
 
     private int checkContains(String s, int offset, String c, String test)
     {
-        Assert.assertThat(test,s.substring(offset),containsString(c));
+        assertThat(test,s.substring(offset),containsString(c));
         return s.indexOf(c,offset);
     }
 
     private void checkNotContained(String s, int offset, String c, String test)
     {
-        Assert.assertThat(test,s.substring(offset),not(containsString(c)));
+        assertThat(test,s.substring(offset),not(containsString(c)));
     }
 
     private void checkNotContained(String s, String c, String test)

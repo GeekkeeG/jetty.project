@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -20,13 +20,13 @@ package org.eclipse.jetty.util.statistic;
 
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.junit.Assert.assertThat;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 /* ------------------------------------------------------------ */
@@ -90,10 +90,7 @@ public class CounterStatisticTest
         final CountDownLatch decBarrier = new CountDownLatch(N/2);
         
         for (int i=N;i-->0;)
-        {
-            final int I = i;
-      
-                
+        {                
             threads[i]=(i>=N/2)
             ?new Thread()
             {

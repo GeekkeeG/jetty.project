@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -26,6 +26,7 @@ import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceReference;
 import org.osgi.framework.ServiceRegistration;
 import org.osgi.util.tracker.ServiceTracker;
 
@@ -66,8 +67,14 @@ public class JettyBootstrapActivator implements BundleActivator
      * 
      * @param context the bundle context
      */
+    @Override
     public void start(final BundleContext context) throws Exception
     {
+        ServiceReference[] references = context.getAllServiceReferences("org.eclipse.jetty.http.HttpFieldPreEncoder", null);
+        
+        if (references == null || references.length==0)
+            LOG.warn("OSGi support for java.util.ServiceLoader may not be present. You may experience runtime errors.");
+        
         INSTANCE = this;
 
         // track other bundles and fragments attached to this bundle that we
@@ -79,7 +86,7 @@ public class JettyBootstrapActivator implements BundleActivator
         _jettyServerServiceTracker.open();
         
         // Create a default jetty instance right now.
-        Server defaultServer = DefaultJettyAtJettyHomeHelper.startJettyAtJettyHome(context);
+        DefaultJettyAtJettyHomeHelper.startJettyAtJettyHome(context);
     }
 
 
@@ -91,6 +98,7 @@ public class JettyBootstrapActivator implements BundleActivator
      * @see
      * org.osgi.framework.BundleActivator#stop(org.osgi.framework.BundleContext)
      */
+    @Override
     public void stop(BundleContext context) throws Exception
     {
         try

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,17 +18,17 @@
 
 package org.eclipse.jetty.servlet;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
 
 import javax.servlet.DispatcherType;
 
 import org.eclipse.jetty.http.pathmap.MappedResource;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ServletHandlerTest
 {
@@ -58,7 +58,7 @@ public class ServletHandlerTest
     ServletMapping sm3 = new ServletMapping();
     
 
-    @Before
+    @BeforeEach
     public void initMappings()
     {
         fh1.setName("fh1");
@@ -267,7 +267,7 @@ public class ServletHandlerTest
 
         handler.updateMappings();
 
-        MappedResource<ServletHolder> entry=handler.getHolderEntry("/foo/*");
+        MappedResource<ServletHolder> entry=handler.getMappedServlet("/foo/*");
         assertNotNull(entry);
         assertEquals("s1", entry.getResource().getName());
     }
@@ -312,7 +312,7 @@ public class ServletHandlerTest
         handler.addServletMapping(sm2);
         handler.updateMappings();
         
-       MappedResource<ServletHolder> entry=handler.getHolderEntry("/foo/*");
+       MappedResource<ServletHolder> entry=handler.getMappedServlet("/foo/*");
        assertNotNull(entry);
        assertEquals("s2", entry.getResource().getName());
     }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -39,9 +39,10 @@ public class WarUrlActivator implements BundleActivator
     /**
      * Register the url stream handler factory.
      * 
-     * @param context
+     * @param context the {@link BundleContext} to use
      */
     @SuppressWarnings("unchecked")
+    @Override
     public void start(BundleContext context) throws Exception
     {
         Dictionary props = new Hashtable();
@@ -55,6 +56,7 @@ public class WarUrlActivator implements BundleActivator
      * as osgi might shutdown every registered service
      * by default: need test)
      */
+    @Override
     public void stop(BundleContext context) throws Exception
     {
         try

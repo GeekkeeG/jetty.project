@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -48,7 +48,7 @@ public interface WebSocketConnectionListener
     /**
      * A WebSocket exception has occurred.
      * <p>
-     * This is a way for the internal implementation to notify of exceptions occured during the processing of websocket.
+     * This is a way for the internal implementation to notify of exceptions occurred during the processing of websocket.
      * <p>
      * Usually this occurs from bad / malformed incoming packets. (example: bad UTF8 data, frames that are too big, violations of the spec)
      * <p>

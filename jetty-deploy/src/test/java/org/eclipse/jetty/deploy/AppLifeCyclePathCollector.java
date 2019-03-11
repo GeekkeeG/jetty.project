@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,11 +18,13 @@
 
 package org.eclipse.jetty.deploy;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.jetty.deploy.graph.Node;
-import org.junit.Assert;
+
 
 /**
  * Binds to all lifecycle nodes, and tracks the order of the lifecycle nodes for testing purposes.
@@ -41,12 +43,14 @@ public class AppLifeCyclePathCollector implements AppLifeCycle.Binding
         return actualOrder;
     }
 
+    @Override
     public String[] getBindingTargets()
     {
         return new String[]
         { "*" };
     }
 
+    @Override
     public void processBinding(Node node, App app) throws Exception
     {
         actualOrder.add(node);
@@ -67,12 +71,12 @@ public class AppLifeCyclePathCollector implements AppLifeCycle.Binding
                 System.out.println(path.getName());
             }
 
-            Assert.assertEquals(msg + " / count",expectedOrder.size(),actualOrder.size());
+            assertEquals(expectedOrder.size(),actualOrder.size(),msg + " / count");
         }
 
         for (int i = 0, n = expectedOrder.size(); i < n; i++)
         {
-            Assert.assertEquals(msg + "[" + i + "]",expectedOrder.get(i),actualOrder.get(i).getName());
+            assertEquals(expectedOrder.get(i),actualOrder.get(i).getName(),msg + "[" + i + "]");
         }
     }
 }

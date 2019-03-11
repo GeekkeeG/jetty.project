@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -69,9 +69,9 @@ public final class ContainerDefaultConfigurator extends Configurator
         {
             // Since this is started via a ServiceLoader, this class has no Scope or context
             // that can be used to obtain a ObjectFactory from.
-            return endpointClass.newInstance();
+            return endpointClass.getDeclaredConstructor().newInstance();
         }
-        catch (IllegalAccessException e)
+        catch (Exception e)
         {
             throw new InstantiationException(String.format("%s: %s",e.getClass().getName(),e.getMessage()));
         }

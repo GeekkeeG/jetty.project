@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -21,25 +21,28 @@ package org.eclipse.jetty.client.http;
 import java.io.IOException;
 import java.util.Map;
 
-import org.eclipse.jetty.client.AbstractHttpClientTransport;
+import org.eclipse.jetty.client.AbstractConnectorHttpClientTransport;
+import org.eclipse.jetty.client.DuplexConnectionPool;
 import org.eclipse.jetty.client.HttpDestination;
 import org.eclipse.jetty.client.Origin;
 import org.eclipse.jetty.client.api.Connection;
 import org.eclipse.jetty.io.EndPoint;
+import org.eclipse.jetty.util.ProcessorUtils;
 import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 
 @ManagedObject("The HTTP/1.1 client transport")
-public class HttpClientTransportOverHTTP extends AbstractHttpClientTransport
+public class HttpClientTransportOverHTTP extends AbstractConnectorHttpClientTransport
 {
     public HttpClientTransportOverHTTP()
     {
-        this(Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
+        this(Math.max( 1, ProcessorUtils.availableProcessors() / 2));
     }
 
     public HttpClientTransportOverHTTP(int selectors)
     {
         super(selectors);
+        setConnectionPoolFactory(destination -> new DuplexConnectionPool(destination, getHttpClient().getMaxConnectionsPerDestination(), destination));
     }
 
     @Override

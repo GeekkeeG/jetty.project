@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -92,7 +92,7 @@ public class DatabaseLoginServiceTestServer
         //System.err.println("Running script:"+scriptFile.getAbsolutePath());
         try (FileInputStream fileStream = new FileInputStream(scriptFile))
         {
-            Loader.loadClass("org.apache.derby.jdbc.EmbeddedDriver").newInstance();
+            Loader.loadClass("org.apache.derby.jdbc.EmbeddedDriver").getDeclaredConstructor().newInstance();
             Connection connection = DriverManager.getConnection(__dbURL, "", "");
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             return ij.runScript(connection, fileStream, "UTF-8", out, "UTF-8");
@@ -110,6 +110,7 @@ public class DatabaseLoginServiceTestServer
             _resourcePath = repositoryPath;
         }
 
+        @Override
         public void handle(String target, org.eclipse.jetty.server.Request baseRequest,
                 HttpServletRequest request, HttpServletResponse response)
             throws IOException, ServletException

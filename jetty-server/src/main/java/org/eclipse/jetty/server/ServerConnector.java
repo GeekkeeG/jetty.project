@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,7 +18,9 @@
 
 package org.eclipse.jetty.server;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -26,11 +28,11 @@ import java.net.SocketException;
 import java.nio.channels.Channel;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.EventListener;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.io.ChannelEndPoint;
@@ -39,7 +41,6 @@ import org.eclipse.jetty.io.EndPoint;
 import org.eclipse.jetty.io.ManagedSelector;
 import org.eclipse.jetty.io.SelectorManager;
 import org.eclipse.jetty.io.SocketChannelEndPoint;
-import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.annotation.ManagedAttribute;
 import org.eclipse.jetty.util.annotation.ManagedObject;
 import org.eclipse.jetty.util.annotation.Name;
@@ -55,36 +56,33 @@ import org.eclipse.jetty.util.thread.Scheduler;
  * use all the commons services (eg {@link Executor}, {@link Scheduler})  of the
  * passed {@link Server} instance, but all services may also be constructor injected
  * into the connector so that it may operate with dedicated or otherwise shared services.
+ * </p>
  * <h2>Connection Factories</h2>
+ * <p>
  * Various convenience constructors are provided to assist with common configurations of
  * ConnectionFactories, whose generic use is described in {@link AbstractConnector}.
  * If no connection factories are passed, then the connector will
  * default to use a {@link HttpConnectionFactory}.  If an non null {@link SslContextFactory}
  * instance is passed, then this used to instantiate a {@link SslConnectionFactory} which is
  * prepended to the other passed or default factories.
+ * </p>
  * <h2>Selectors</h2>
- * The connector will use the {@link Executor} service to execute a number of Selector Tasks,
- * which are implemented to each use a NIO {@link Selector} instance to asynchronously
- * schedule a set of accepted connections.  It is the selector thread that will call the
- * {@link Callback} instances passed in the {@link EndPoint#fillInterested(Callback)} or
- * {@link EndPoint#write(Callback, java.nio.ByteBuffer...)} methods.  It is expected
- * that these callbacks may do some non-blocking IO work, but will always dispatch to the
- * {@link Executor} service any blocking, long running or application tasks.
  * <p>
  * The default number of selectors is equal to half of the number of processors available to the JVM,
  * which should allow optimal performance even if all the connections used are performing
  * significant non-blocking work in the callback tasks.
+ * </p>
  */
 @ManagedObject("HTTP connector using NIO ByteChannels and Selectors")
 public class ServerConnector extends AbstractNetworkConnector
 {
     private final SelectorManager _manager;
+    private final AtomicReference<Closeable> _acceptor = new AtomicReference<>();
     private volatile ServerSocketChannel _acceptChannel;
     private volatile boolean _inheritChannel = false;
     private volatile int _localPort = -1;
     private volatile int _acceptQueueSize = 0;
     private volatile boolean _reuseAddress = true;
-    private volatile int _lingerTime = -1;
 
     /**
      * <p>Construct a ServerConnector with a private instance of {@link HttpConnectionFactory} as the only factory.</p>
@@ -219,8 +217,7 @@ public class ServerConnector extends AbstractNetworkConnector
         @Name("factories") ConnectionFactory... factories)
     {
         super(server,executor,scheduler,bufferPool,acceptors,factories);
-        _manager = newSelectorManager(getExecutor(), getScheduler(),
-            selectors>0?selectors:Math.max(1,Math.min(4,Runtime.getRuntime().availableProcessors()/2)));
+        _manager = newSelectorManager(getExecutor(), getScheduler(),selectors);
         addBean(_manager, true);
         setAcceptorPriorityDelta(-2);
     }
@@ -233,13 +230,24 @@ public class ServerConnector extends AbstractNetworkConnector
     @Override
     protected void doStart() throws Exception
     {
+        for (EventListener l: getBeans(EventListener.class))
+            _manager.addEventListener(l);
+        
         super.doStart();
 
         if (getAcceptors()==0)
         {
             _acceptChannel.configureBlocking(false);
-            _manager.acceptor(_acceptChannel);
+            _acceptor.set(_manager.acceptor(_acceptChannel));
         }
+    }
+    
+    @Override
+    protected void doStop() throws Exception
+    {
+        super.doStop();
+        for (EventListener l: getBeans(EventListener.class))
+            _manager.removeEventListener(l);
     }
 
     @Override
@@ -266,7 +274,7 @@ public class ServerConnector extends AbstractNetworkConnector
      * <p>Use it with xinetd/inetd, to launch an instance of Jetty on demand. The port
      * used to access pages on the Jetty instance is the same as the port used to
      * launch Jetty.</p>
-     *
+     * @see ServerConnector#openAcceptChannel()
      * @param inheritChannel whether this connector uses a channel inherited from the JVM.
      */
     public void setInheritChannel(boolean inheritChannel)
@@ -274,59 +282,85 @@ public class ServerConnector extends AbstractNetworkConnector
         _inheritChannel = inheritChannel;
     }
 
+    /**
+     * Open the connector using the passed ServerSocketChannel.
+     * This open method can be called before starting the connector to pass it a ServerSocketChannel
+     * that will be used instead of one returned from {@link #openAcceptChannel()}
+     * @param acceptChannel the channel to use
+     * @throws IOException if the server channel is not bound
+     */
+    public void open(ServerSocketChannel acceptChannel) throws IOException
+    {
+        if (isStarted())
+            throw new IllegalStateException(getState());
+        updateBean(_acceptChannel,acceptChannel);
+        _acceptChannel = acceptChannel;
+        _localPort = _acceptChannel.socket().getLocalPort();
+        if (_localPort <= 0)
+            throw new IOException("Server channel not bound");
+    }
+    
     @Override
     public void open() throws IOException
     {
         if (_acceptChannel == null)
         {
-            ServerSocketChannel serverChannel = null;
-            if (isInheritChannel())
-            {
-                Channel channel = System.inheritedChannel();
-                if (channel instanceof ServerSocketChannel)
-                    serverChannel = (ServerSocketChannel)channel;
-                else
-                    LOG.warn("Unable to use System.inheritedChannel() [{}]. Trying a new ServerSocketChannel at {}:{}", channel, getHost(), getPort());
-            }
-
-            if (serverChannel == null)
-            {
-                serverChannel = ServerSocketChannel.open();
-
-                InetSocketAddress bindAddress = getHost() == null ? new InetSocketAddress(getPort()) : new InetSocketAddress(getHost(), getPort());
-                serverChannel.socket().setReuseAddress(getReuseAddress());
-                serverChannel.socket().bind(bindAddress, getAcceptQueueSize());
-
-                _localPort = serverChannel.socket().getLocalPort();
-                if (_localPort <= 0)
-                    throw new IOException("Server channel not bound");
-            }
-
-            serverChannel.configureBlocking(true);
-            addBean(serverChannel);
-
-            _acceptChannel = serverChannel;
+            _acceptChannel = openAcceptChannel();
+            _acceptChannel.configureBlocking(true);
+            _localPort = _acceptChannel.socket().getLocalPort();
+            if (_localPort <= 0)
+                throw new IOException("Server channel not bound");
+            addBean(_acceptChannel);
         }
     }
 
-    @Override
-    public Future<Void> shutdown()
+    /**
+     * Called by {@link #open()} to obtain the accepting channel.
+     * @return ServerSocketChannel used to accept connections.
+     * @throws IOException if unable to obtain or configure the server channel
+     */
+    protected ServerSocketChannel openAcceptChannel() throws IOException
     {
-        // shutdown all the connections
-        return super.shutdown();
+        ServerSocketChannel serverChannel = null;
+        if (isInheritChannel())
+        {
+            Channel channel = System.inheritedChannel();
+            if (channel instanceof ServerSocketChannel)
+                serverChannel = (ServerSocketChannel)channel;
+            else
+                LOG.warn("Unable to use System.inheritedChannel() [{}]. Trying a new ServerSocketChannel at {}:{}", channel, getHost(), getPort());
+        }
+
+        if (serverChannel == null)
+        {
+            serverChannel = ServerSocketChannel.open();
+
+            InetSocketAddress bindAddress = getHost() == null ? new InetSocketAddress(getPort()) : new InetSocketAddress(getHost(), getPort());
+            serverChannel.socket().setReuseAddress(getReuseAddress());
+            try
+            {
+                serverChannel.socket().bind(bindAddress, getAcceptQueueSize());
+            }
+            catch (BindException e)
+            {
+                throw new IOException("Failed to bind to " + bindAddress, e);
+            }
+        }
+
+        return serverChannel;
     }
 
     @Override
     public void close()
     {
+        super.close();
+        
         ServerSocketChannel serverChannel = _acceptChannel;
         _acceptChannel = null;
-
         if (serverChannel != null)
         {
             removeBean(serverChannel);
 
-            // If the interrupt did not close it, we should close it
             if (serverChannel.isOpen())
             {
                 try
@@ -339,7 +373,6 @@ public class ServerConnector extends AbstractNetworkConnector
                 }
             }
         }
-        // super.close();
         _localPort = -2;
     }
 
@@ -367,10 +400,6 @@ public class ServerConnector extends AbstractNetworkConnector
         try
         {
             socket.setTcpNoDelay(true);
-            if (_lingerTime >= 0)
-                socket.setSoLinger(true, _lingerTime / 1000);
-            else
-                socket.setSoLinger(false, 0);
         }
         catch (SocketException e)
         {
@@ -378,6 +407,7 @@ public class ServerConnector extends AbstractNetworkConnector
         }
     }
 
+    @ManagedAttribute("The Selector Manager")
     public SelectorManager getSelectorManager()
     {
         return _manager;
@@ -404,22 +434,28 @@ public class ServerConnector extends AbstractNetworkConnector
     }
 
     /**
-     * @return the linger time
-     * @see Socket#getSoLinger()
+     * Returns the socket close linger time.
+     *
+     * @return -1 as the socket close linger time is always disabled.
+     * @see java.net.StandardSocketOptions#SO_LINGER
+     * @deprecated don't use as socket close linger time has undefined behavior for non-blocking sockets
      */
-    @ManagedAttribute("TCP/IP solinger time or -1 to disable")
+    @ManagedAttribute(value = "Socket close linger time. Deprecated, always returns -1", readonly = true)
+    @Deprecated
     public int getSoLingerTime()
     {
-        return _lingerTime;
+        return -1;
     }
 
     /**
-     * @param lingerTime the linger time. Use -1 to disable.
-     * @see Socket#setSoLinger(boolean, int)
+     * @param lingerTime the socket close linger time; use -1 to disable.
+     * @see java.net.StandardSocketOptions#SO_LINGER
+     * @deprecated don't use as socket close linger time has undefined behavior for non-blocking sockets
      */
+    @Deprecated
     public void setSoLingerTime(int lingerTime)
     {
-        _lingerTime = lingerTime;
+        LOG.warn("Ignoring deprecated socket close linger time");
     }
 
     /**
@@ -455,6 +491,38 @@ public class ServerConnector extends AbstractNetworkConnector
     public void setReuseAddress(boolean reuseAddress)
     {
         _reuseAddress = reuseAddress;
+    }
+
+   
+    @Override
+    public void setAccepting(boolean accepting)
+    {
+        super.setAccepting(accepting);
+        if (getAcceptors()>0)
+            return;
+        
+        try
+        {
+            if (accepting)
+            {
+                if (_acceptor.get()==null)
+                {
+                    Closeable acceptor = _manager.acceptor(_acceptChannel);
+                    if (!_acceptor.compareAndSet(null,acceptor))
+                        acceptor.close();
+                }
+            }
+            else
+            {
+                Closeable acceptor = _acceptor.get();
+                if (acceptor!=null && _acceptor.compareAndSet(acceptor,null))
+                    acceptor.close();
+            }
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(e);
+        } 
     }
 
     protected class ServerConnectorManager extends SelectorManager
@@ -494,6 +562,12 @@ public class ServerConnector extends AbstractNetworkConnector
         {
             onEndPointClosed(endpoint);
             super.endPointClosed(endpoint);
+        }
+
+        @Override
+        public String toString()
+        {
+            return String.format("SelectorManager@%s",ServerConnector.this);
         }
     }
 }

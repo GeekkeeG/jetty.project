@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -47,7 +47,7 @@ public class PackageAdminServiceTracker implements ServiceListener
 {
     private BundleContext _context;
 
-    private List<BundleActivator> _activatedFragments = new ArrayList<BundleActivator>();
+    private List<BundleActivator> _activatedFragments = new ArrayList<>();
 
     private boolean _fragmentsWereActivated = false;
 
@@ -110,6 +110,7 @@ public class PackageAdminServiceTracker implements ServiceListener
      * 
      * @param event The <code>ServiceEvent</code> object.
      */
+    @Override
     public void serviceChanged(ServiceEvent event)
     {
         if (event.getType() == ServiceEvent.REGISTERED)
@@ -153,7 +154,7 @@ public class PackageAdminServiceTracker implements ServiceListener
             return null;
         }
         PackageAdmin admin = (PackageAdmin) _context.getService(sr);
-        LinkedHashMap<String, Bundle> deps = new LinkedHashMap<String, Bundle>();
+        LinkedHashMap<String, Bundle> deps = new LinkedHashMap<>();
         collectFragmentsAndRequiredBundles(bundle, admin, deps, false);
         return deps.values().toArray(new Bundle[deps.size()]);
     }
@@ -279,26 +280,10 @@ public class PackageAdminServiceTracker implements ServiceListener
                 Class<?> c = Class.forName(fragmentActivator);
                 if (c != null)
                 {
-                    BundleActivator bActivator = (BundleActivator) c.newInstance();
+                    BundleActivator bActivator = (BundleActivator) c.getDeclaredConstructor().newInstance();
                     bActivator.start(_context);
                     _activatedFragments.add(bActivator);
                 }
-            }
-            catch (NullPointerException e)
-            {
-                // e.printStackTrace();
-            }
-            catch (InstantiationException e)
-            {
-                // e.printStackTrace();
-            }
-            catch (IllegalAccessException e)
-            {
-                // e.printStackTrace();
-            }
-            catch (ClassNotFoundException e)
-            {
-                // e.printStackTrace();
             }
             catch (Exception e)
             {

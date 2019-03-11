@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[jaas-support]]
 === JAAS Support
@@ -122,7 +124,7 @@ An example:
 [[jaas-step-2]]
 ===== Step 2
 
-Set up your `LoginModule` in a configuration file, following the http://java.sun.com/j2se/1.4.2/docs/api/javax/security/auth/login/Configuration.html[syntax rules] :
+Set up your `LoginModule` in a configuration file, following the https://docs.oracle.com/javase/7/docs/api/javax/security/auth/login/Configuration.html[syntax rules] :
 
 [source,ini]
 ----
@@ -177,7 +179,6 @@ To allow the greatest degree of flexibility in using JAAS with web applications,
 Note that you don't ordinarily need to set these explicitly, as Jetty has defaults which will work in 99% of cases.
 However, should you need to, you can configure:
 
-* a policy for role-based authorization (Default: `org.eclipse.jetty.jaas.StrictRoleCheckPolicy`)
 * a CallbackHandler (Default: `org.eclipse.jetty.jaas.callback.DefaultCallbackHandler`)
 * a list of classnames for the Principal implementation that equate to a user role (Default: `org.eclipse.jetty.jaas.JAASRole`)
 
@@ -188,9 +189,6 @@ Here's an example of setting each of these (to their default values):
 <New class="org.eclipse.jetty.jaas.JAASLoginService">
   <Set name="Name">Test JAAS Realm</Set>
   <Set name="LoginModuleName">xyz</Set>
-  <Set name="RoleCheckPolicy">
-    <New class="org.eclipse.jetty.jaas.StrictRoleCheckPolicy"/>
-  </Set>
   <Set name="CallbackHandlerClass">
        org.eclipse.jetty.jaas.callback.DefaultCallbackHandler
   </Set>
@@ -201,16 +199,6 @@ Here's an example of setting each of these (to their default values):
   </Set>
 </New>
 ----
-
-===== RoleCheckPolicy
-
-The `RoleCheckPolicy` must be an implementation of the `org.eclipse.jetty.jaas.RoleCheckPolicy` interface and its purpose is to help answer the question "is User X in Role Y" for role-based authorization requests.
-The default implementation distributed with Jetty is the `org.eclipse.jetty.jaas.StrictRoleCheckPolicy`, which will assess a user as having a particular role if that role is at the top of the stack of roles that have been temporarily pushed onto the user.
-If the user has no temporarily assigned roles, the role is amongst those configured for the user.
-
-Roles can be temporarily assigned to a user programmatically by using the `pushRole(String rolename)` method of the `org.eclipse.jetty.jaas.JAASUserPrincipal` class.
-
-For the majority of webapps, the default `StrictRoleCheckPolicy` will be quite adequate, however you may provide your own implementation and set it on your `JAASLoginService` instance.
 
 ===== CallbackHandler
 
@@ -375,11 +363,15 @@ The `AbstractLoginModule` does not support any caching, so if you want to cache 
 
 ==== Other Goodies
 
+===== ServletRequestCallback
+
+This callback gives you access to the ServletRequest that is involved in the authentication, and thus to other features like the current Session. This callback can be configured in your custom LoginModule implementation. Note that none of the LoginModule implementations provided with Jetty currently use this callback.
+
 ===== RequestParameterCallback
 
 As all servlet containers intercept and process a form submission with action `j_security_check`, it is usually not possible to insert any extra input fields onto a login form with which to perform authentication: you may only pass `j_username` and `j_password`.
 For those rare occasions when this is not good enough, and you require more information from the user in order to authenticate them, you can use the JAAS callback handler `org.eclipse.jetty.jaas.callback.RequestParameterCallback`.
-This callback handler gives you access to all parameters that were passed in the form submission.
+This callback gives you access to all parameters that were passed in the form submission.
 To use it, in the `login()` method of your custom login module, add the `RequestParameterCallback` to the list of callback handlers the login module uses, tell it which params you are interested in, and then get the value of the parameter back.
 Here is an example:
 

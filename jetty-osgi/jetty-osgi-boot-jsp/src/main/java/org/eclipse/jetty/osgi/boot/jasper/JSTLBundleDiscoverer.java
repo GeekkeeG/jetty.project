@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -93,7 +93,8 @@ public class JSTLBundleDiscoverer implements TldBundleDiscoverer
               // Class.getForName("org.apache.jasper.runtime.JspFactoryImpl")
               // however its bundles does not import the jasper package
               // so it fails. let's help things out:
-                fact = (JspFactory) JettyBootstrapActivator.class.getClassLoader().loadClass(DEFAULT_JSP_FACTORY_IMPL_CLASS).newInstance();
+                fact = (JspFactory) JettyBootstrapActivator.class.getClassLoader()
+                    .loadClass(DEFAULT_JSP_FACTORY_IMPL_CLASS).getDeclaredConstructor().newInstance();
                 JspFactory.setDefaultFactory(fact);
             }
 
@@ -116,12 +117,13 @@ public class JSTLBundleDiscoverer implements TldBundleDiscoverer
      * 
      * Support only 2 types of packaging for the bundle: - the bundle is a jar
      * (recommended for runtime.) - the bundle is a folder and contain jars in
-     * the root and/or in the lib folder (nice for PDE developement situations)
+     * the root and/or in the lib folder (nice for PDE development situations)
      * Unsupported: the bundle is a jar that embeds more jars.
      * 
      * @return array of URLs
-     * @throws Exception
+     * @throws Exception In case of errors during resolving TLDs files
      */
+    @Override
     public URL[] getUrlsForBundlesWithTlds(DeploymentManager deployer, BundleFileLocatorHelper locatorHelper) throws Exception
     {
 

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,9 +22,10 @@ import static org.eclipse.jetty.server.HttpInput.EARLY_EOF_CONTENT;
 import static org.eclipse.jetty.server.HttpInput.EOF_CONTENT;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -38,10 +39,10 @@ import org.eclipse.jetty.server.HttpInput.Content;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.hamcrest.Matchers;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 
 /**
@@ -94,17 +95,18 @@ public class HttpInputAsyncStateTest
         }
     }
 
-    @Before
+    @BeforeEach
     public void before()
     {        
         _noReadInDataAvailable = false;
         _in = new HttpInput(new HttpChannelState(new HttpChannel(null, new HttpConfiguration(), null, null)
         {
             @Override
-            public void asyncReadFillInterested()
+            public void onAsyncWaitForContent()
             {
-                __history.add("asyncReadFillInterested");
+                __history.add("onAsyncWaitForContent");
             }
+
             @Override
             public Scheduler getScheduler()
             {
@@ -176,7 +178,7 @@ public class HttpInputAsyncStateTest
             {
                 case DISPATCH:
                     if (run==null)
-                        Assert.fail();
+                        fail("Run is null during DISPATCH");
                     run.run();
                     break;
                     
@@ -193,7 +195,7 @@ public class HttpInputAsyncStateTest
                     break;
                     
                 default:
-                    Assert.fail();
+                    fail("Bad Action: " + action);
             }
             action = _state.unhandle();
         }
@@ -264,10 +266,10 @@ public class HttpInputAsyncStateTest
     }
     
     
-    @After
+    @AfterEach
     public void after()
     {
-        Assert.assertThat(__history.poll(), Matchers.nullValue());
+        assertThat(__history.poll(), Matchers.nullValue());
     }
 
     @Test
@@ -314,7 +316,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(EOF_CONTENT);
         check("onReadPossible true");
@@ -352,7 +354,7 @@ public class HttpInputAsyncStateTest
         });
 
         _in.setReadListener(_listener);
-        check("asyncReadFillInterested","onReadUnready");
+        check("onAsyncWaitForContent","onReadUnready");
 
         deliver(EOF_CONTENT);
         check("onReadPossible true");        
@@ -406,7 +408,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(EARLY_EOF_CONTENT);
         check("onReadPossible true");
@@ -444,7 +446,7 @@ public class HttpInputAsyncStateTest
         });
 
         _in.setReadListener(_listener);
-        check("asyncReadFillInterested","onReadUnready");
+        check("onAsyncWaitForContent","onReadUnready");
 
         deliver(EARLY_EOF_CONTENT);
         check("onReadPossible true");        
@@ -500,7 +502,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(new TContent("Hello"),EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");
@@ -538,7 +540,7 @@ public class HttpInputAsyncStateTest
         });
 
         _in.setReadListener(_listener);
-        check("asyncReadFillInterested","onReadUnready");
+        check("onAsyncWaitForContent","onReadUnready");
 
         deliver(new TContent("Hello"),EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");        
@@ -601,7 +603,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(new TContent("Hello"),EARLY_EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");
@@ -647,7 +649,7 @@ public class HttpInputAsyncStateTest
         });
 
         _in.setReadListener(_listener);
-        check("asyncReadFillInterested","onReadUnready");
+        check("onAsyncWaitForContent","onReadUnready");
 
         deliver(new TContent("Hello"),EARLY_EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");        
@@ -672,7 +674,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(new TContent("Hello"),EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");
@@ -697,7 +699,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(new TContent("Hello"),EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");
@@ -732,7 +734,7 @@ public class HttpInputAsyncStateTest
             check("onReadUnready");       
         });
 
-        check("asyncReadFillInterested");
+        check("onAsyncWaitForContent");
         
         deliver(new TContent("Hello"),EOF_CONTENT);
         check("onReadPossible true","onReadPossible false");

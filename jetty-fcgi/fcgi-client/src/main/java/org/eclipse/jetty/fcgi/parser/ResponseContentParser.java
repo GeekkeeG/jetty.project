@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -153,7 +153,7 @@ public class ResponseContentParser extends StreamContentParser
         public int getHeaderCacheSize()
         {
             // TODO: configure this
-            return 0;
+            return 4096;
         }
 
         @Override
@@ -305,9 +305,9 @@ public class ResponseContentParser extends StreamContentParser
         }
 
         @Override
-        public void badMessage(int status, String reason)
+        public void badMessage(BadMessageException failure)
         {
-            fail(new BadMessageException(status, reason));
+            fail(failure);
         }
 
         protected void fail(Throwable failure)

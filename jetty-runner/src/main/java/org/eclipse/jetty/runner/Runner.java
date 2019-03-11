@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -43,7 +43,6 @@ import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.StatisticsHandler;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
@@ -63,7 +62,9 @@ import org.eclipse.jetty.xml.XmlConfiguration;
  * Runner
  * <p>
  * Combine jetty classes into a single executable jar and run webapps based on the args to it.
+ * @deprecated No replacement provided or available.  Migrate to jetty-home (and use {@code ${jetty.base}} directory).
  */
+@Deprecated
 public class Runner
 {
     private static final Logger LOG = Log.getLogger(Runner.class);
@@ -86,7 +87,6 @@ public class Runner
     protected URLClassLoader _classLoader;
     protected Classpath _classpath = new Classpath();
     protected ContextHandlerCollection _contexts;
-    protected RequestLogHandler _logHandler;
     protected String _logFile;
     protected ArrayList<String> _configFiles;
     protected boolean _enableStats=false;
@@ -166,8 +166,8 @@ public class Runner
         System.err.println(" --out file                          - info/warn/debug log filename (with optional 'yyyy_mm_dd' wildcard");
         System.err.println(" --host name|ip                      - interface to listen on (default is all interfaces)");
         System.err.println(" --port n                            - port to listen on (default 8080)");
-        System.err.println(" --stop-port n                       - port to listen for stop command");
-        System.err.println(" --stop-key n                        - security string for stop command (required if --stop-port is present)");
+        System.err.println(" --stop-port n                       - port to listen for stop command (or -DSTOP.PORT=n)");
+        System.err.println(" --stop-key n                        - security string for stop command (required if --stop-port is present) (or -DSTOP.KEY=n)");
         System.err.println(" [--jar file]*n                      - each tuple specifies an extra jar to be added to the classloader");
         System.err.println(" [--lib dir]*n                       - each tuple specifies an extra directory of jars to be added to the classloader");
         System.err.println(" [--classes dir]*n                   - each tuple specifies an extra directory of classes to be added to the classloader");
@@ -239,8 +239,8 @@ public class Runner
         boolean contextPathSet = false;
         int port = __defaultPort;
         String host = null;
-        int stopPort = 0;
-        String stopKey = null;
+        int stopPort = Integer.getInteger( "STOP.PORT", 0 );
+        String stopKey = System.getProperty("STOP.KEY", null);
 
         boolean runnerServerInitialized = false;
 
@@ -297,6 +297,18 @@ public class Runner
                     _statsPropFile = ("unsecure".equalsIgnoreCase(_statsPropFile) ? null : _statsPropFile);
                     break;
                 default:
+                    // process system property type argument so users can use in second args part
+                    if ( args[i].startsWith( "-D" ) ){
+                        String[] sysProps = args[i].substring(2).split("=",2);
+                        if("STOP.KEY".equals( sysProps[0] )){
+                            stopKey = sysProps[1];
+                            break;
+                        } else if("STOP.PORT".equals( sysProps[0] )){
+                            stopPort = Integer.valueOf(sysProps[1]);
+                            break;
+                        }
+                    }
+
 // process contexts
 
                     if (!runnerServerInitialized) // log handlers not registered, server maybe not created, etc
@@ -376,14 +388,6 @@ public class Runner
                         if (handlers.getChildHandlerByClass(DefaultHandler.class) == null) 
                         {
                             handlers.addHandler(new DefaultHandler());
-                        }
-
-                        //ensure a log handler is present
-                        _logHandler = (RequestLogHandler) handlers.getChildHandlerByClass(RequestLogHandler.class);
-                        if (_logHandler == null) 
-                        {
-                            _logHandler = new RequestLogHandler();
-                            handlers.addHandler(_logHandler);
                         }
 
 
@@ -495,7 +499,7 @@ public class Runner
         {
             NCSARequestLog requestLog = new NCSARequestLog(_logFile);
             requestLog.setExtended(false);
-            _logHandler.setRequestLog(requestLog);
+            _server.setRequestLog(requestLog);
         }
     }
     
@@ -541,6 +545,10 @@ public class Runner
 
     public static void main(String[] args)
     {
+        System.err.println("WARNING: jetty-runner is deprecated.");
+        System.err.println("         See Jetty Documentation for startup options");
+        System.err.println("         https://www.eclipse.org/jetty/documentation/");
+
         Runner runner = new Runner();
 
         try

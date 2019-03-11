@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -19,16 +19,13 @@
 package org.eclipse.jetty.util;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.lang.reflect.Field;
 import java.nio.Buffer;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.charset.Charset;
@@ -240,6 +237,17 @@ public class BufferUtil
         }
     }
 
+    /**
+     * @param buf the buffer to check
+     * @return true if buf is equal to EMPTY_BUFFER
+     */
+    public static boolean isTheEmptyBuffer(ByteBuffer buf)
+    {
+        @SuppressWarnings("ReferenceEquality")
+        boolean isTheEmptyBuffer_ = (buf == EMPTY_BUFFER);
+        return isTheEmptyBuffer_;
+    }
+    
     /* ------------------------------------------------------------ */
     /** Check for an empty or null buffer.
      * @param buf the buffer to check
@@ -913,25 +921,17 @@ public class BufferUtil
         }
     }
 
+    /**
+     * @param buffer the buffer to test
+     * @return {@code false}
+     * @deprecated don't use - there is no way to reliably tell if a ByteBuffer is mapped.
+     */
+    @Deprecated
     public static boolean isMappedBuffer(ByteBuffer buffer)
     {
-        if (!(buffer instanceof MappedByteBuffer))
-            return false;
-        MappedByteBuffer mapped = (MappedByteBuffer) buffer;
-
-        try 
-        {
-            // Check if it really is a mapped buffer
-            mapped.isLoaded();
-            return true;
-        }
-        catch(UnsupportedOperationException e)
-        {
-            return false;
-        }
+        return false;
     }
-    
-    
+
     public static ByteBuffer toBuffer(Resource resource,boolean direct) throws IOException
     {
         int len=(int)resource.length();
@@ -1096,8 +1096,8 @@ public class BufferUtil
     private static void appendContentChar(StringBuilder buf, byte b)
     {
         if (b == '\\')
-            buf.append("\\\\");   
-        else if (b >= ' ')
+            buf.append("\\\\");
+        else if ((b >= 0x20) && (b<=0x7E)) // limit to 7-bit printable US-ASCII character space
             buf.append((char)b);
         else if (b == '\r')
             buf.append("\\r");

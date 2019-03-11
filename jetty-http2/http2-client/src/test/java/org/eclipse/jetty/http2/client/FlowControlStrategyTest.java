@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,13 @@
 //
 
 package org.eclipse.jetty.http2.client;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -37,13 +44,16 @@ import org.eclipse.jetty.http.HostPortHttpField;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpScheme;
+import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.http.MetaData;
+import org.eclipse.jetty.http2.BufferingFlowControlStrategy;
 import org.eclipse.jetty.http2.ErrorCode;
 import org.eclipse.jetty.http2.FlowControlStrategy;
 import org.eclipse.jetty.http2.HTTP2Session;
 import org.eclipse.jetty.http2.HTTP2Stream;
 import org.eclipse.jetty.http2.ISession;
+import org.eclipse.jetty.http2.IStream;
 import org.eclipse.jetty.http2.api.Session;
 import org.eclipse.jetty.http2.api.Stream;
 import org.eclipse.jetty.http2.api.server.ServerSessionListener;
@@ -52,28 +62,24 @@ import org.eclipse.jetty.http2.frames.GoAwayFrame;
 import org.eclipse.jetty.http2.frames.HeadersFrame;
 import org.eclipse.jetty.http2.frames.ResetFrame;
 import org.eclipse.jetty.http2.frames.SettingsFrame;
+import org.eclipse.jetty.http2.frames.WindowUpdateFrame;
 import org.eclipse.jetty.http2.server.RawHTTP2ServerConnectionFactory;
 import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.toolchain.test.TestTracker;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.FutureCallback;
 import org.eclipse.jetty.util.FuturePromise;
 import org.eclipse.jetty.util.Promise;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.eclipse.jetty.util.thread.Invocable.InvocationType;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 public abstract class FlowControlStrategyTest
 {
-    @Rule
-    public TestTracker tracker = new TestTracker();
     protected ServerConnector connector;
     protected HTTP2Client client;
     protected Server server;
@@ -86,6 +92,8 @@ public abstract class FlowControlStrategyTest
         serverExecutor.setName("server");
         server = new Server(serverExecutor);
         RawHTTP2ServerConnectionFactory connectionFactory = new RawHTTP2ServerConnectionFactory(new HttpConfiguration(), listener);
+        connectionFactory.setInitialSessionRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        connectionFactory.setInitialStreamRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
         connectionFactory.setFlowControlStrategyFactory(FlowControlStrategyTest.this::newFlowControlStrategy);
         connector = new ServerConnector(server, connectionFactory);
         server.addConnector(connector);
@@ -95,6 +103,8 @@ public abstract class FlowControlStrategyTest
         QueuedThreadPool clientExecutor = new QueuedThreadPool();
         clientExecutor.setName("client");
         client.setExecutor(clientExecutor);
+        client.setInitialSessionRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
+        client.setInitialStreamRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
         client.setFlowControlStrategyFactory(FlowControlStrategyTest.this::newFlowControlStrategy);
         client.start();
     }
@@ -117,7 +127,7 @@ public abstract class FlowControlStrategyTest
         return new MetaData.Request(method, HttpScheme.HTTP, new HostPortHttpField(authority), "/", HttpVersion.HTTP_2, fields);
     }
 
-    @After
+    @AfterEach
     public void dispose() throws Exception
     {
         // Allow WINDOW_UPDATE frames to be sent/received to avoid exception stack traces.
@@ -139,8 +149,8 @@ public abstract class FlowControlStrategyTest
             public Map<Integer, Integer> onPreface(Session session)
             {
                 HTTP2Session serverSession = (HTTP2Session)session;
-                Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverSession.getSendWindow());
-                Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverSession.getRecvWindow());
+                assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverSession.getSendWindow());
+                assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverSession.getRecvWindow());
                 prefaceLatch.countDown();
                 return null;
             }
@@ -151,8 +161,8 @@ public abstract class FlowControlStrategyTest
                 for (Stream stream : session.getStreams())
                 {
                     HTTP2Stream serverStream = (HTTP2Stream)stream;
-                    Assert.assertEquals(0, serverStream.getSendWindow());
-                    Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
+                    assertEquals(0, serverStream.getSendWindow());
+                    assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
                 }
                 settingsLatch.countDown();
             }
@@ -164,14 +174,14 @@ public abstract class FlowControlStrategyTest
                 MetaData.Request request = (MetaData.Request)frame.getMetaData();
                 if ("GET".equalsIgnoreCase(request.getMethod()))
                 {
-                    Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getSendWindow());
-                    Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
+                    assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getSendWindow());
+                    assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
                     stream1Latch.countDown();
                 }
                 else
                 {
-                    Assert.assertEquals(0, serverStream.getSendWindow());
-                    Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
+                    assertEquals(0, serverStream.getSendWindow());
+                    assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, serverStream.getRecvWindow());
                     stream2Latch.countDown();
                 }
                 return null;
@@ -180,18 +190,18 @@ public abstract class FlowControlStrategyTest
 
         HTTP2Session clientSession = (HTTP2Session)newClient(new Session.Listener.Adapter());
 
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientSession.getSendWindow());
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientSession.getRecvWindow());
-        Assert.assertTrue(prefaceLatch.await(5, TimeUnit.SECONDS));
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientSession.getSendWindow());
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientSession.getRecvWindow());
+        assertTrue(prefaceLatch.await(5, TimeUnit.SECONDS));
 
         MetaData.Request request1 = newRequest("GET", new HttpFields());
         FuturePromise<Stream> promise1 = new FuturePromise<>();
         clientSession.newStream(new HeadersFrame(request1, null, true), promise1, new Stream.Listener.Adapter());
         HTTP2Stream clientStream1 = (HTTP2Stream)promise1.get(5, TimeUnit.SECONDS);
 
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getSendWindow());
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getRecvWindow());
-        Assert.assertTrue(stream1Latch.await(5, TimeUnit.SECONDS));
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getSendWindow());
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getRecvWindow());
+        assertTrue(stream1Latch.await(5, TimeUnit.SECONDS));
 
         // Send a SETTINGS frame that changes the window size.
         // This tells the server that its stream send window must be updated,
@@ -203,8 +213,8 @@ public abstract class FlowControlStrategyTest
         clientSession.settings(frame, callback);
         callback.get(5, TimeUnit.SECONDS);
 
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getSendWindow());
-        Assert.assertEquals(0, clientStream1.getRecvWindow());
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream1.getSendWindow());
+        assertEquals(0, clientStream1.getRecvWindow());
         settingsLatch.await(5, TimeUnit.SECONDS);
 
         // Now create a new stream, it must pick up the new value.
@@ -213,9 +223,9 @@ public abstract class FlowControlStrategyTest
         clientSession.newStream(new HeadersFrame(request2, null, true), promise2, new Stream.Listener.Adapter());
         HTTP2Stream clientStream2 = (HTTP2Stream)promise2.get(5, TimeUnit.SECONDS);
 
-        Assert.assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream2.getSendWindow());
-        Assert.assertEquals(0, clientStream2.getRecvWindow());
-        Assert.assertTrue(stream2Latch.await(5, TimeUnit.SECONDS));
+        assertEquals(FlowControlStrategy.DEFAULT_WINDOW_SIZE, clientStream2.getSendWindow());
+        assertEquals(0, clientStream2.getRecvWindow());
+        assertTrue(stream2Latch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -294,12 +304,12 @@ public abstract class FlowControlStrategyTest
             stream.data(new DataFrame(stream.getId(), ByteBuffer.allocate(size * 2), true), Callback.NOOP);
         });
 
-        Assert.assertFalse(dataLatch.await(1, TimeUnit.SECONDS));
+        assertFalse(dataLatch.await(1, TimeUnit.SECONDS));
 
         // Consume the data arrived to server, this will resume flow control on the client.
         callbackRef.get().succeeded();
 
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -307,7 +317,7 @@ public abstract class FlowControlStrategyTest
     {
         final int windowSize = 1536;
         final int length = 5 * windowSize;
-        final CountDownLatch settingsLatch = new CountDownLatch(1);
+        final CountDownLatch settingsLatch = new CountDownLatch(2);
         start(new ServerSessionListener.Adapter()
         {
             @Override
@@ -336,9 +346,11 @@ public abstract class FlowControlStrategyTest
 
         Map<Integer, Integer> settings = new HashMap<>();
         settings.put(SettingsFrame.INITIAL_WINDOW_SIZE, windowSize);
-        session.settings(new SettingsFrame(settings, false), Callback.NOOP);
+        Callback.Completable completable = new Callback.Completable();
+        session.settings(new SettingsFrame(settings, false), completable);
+        completable.thenRun(settingsLatch::countDown);
 
-        Assert.assertTrue(settingsLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(settingsLatch.await(5, TimeUnit.SECONDS));
 
         final CountDownLatch dataLatch = new CountDownLatch(1);
         final Exchanger<Callback> exchanger = new Exchanger<>();
@@ -369,7 +381,7 @@ public abstract class FlowControlStrategyTest
                     }
                     else
                     {
-                        Assert.fail();
+                        fail("Unrecognized dataFrames: " + dataFrames);
                     }
                 }
                 catch (InterruptedException x)
@@ -391,7 +403,7 @@ public abstract class FlowControlStrategyTest
         // Consume the second chunk.
         callback.succeeded();
 
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -442,7 +454,7 @@ public abstract class FlowControlStrategyTest
                             }
                             else
                             {
-                                Assert.fail();
+                                fail("Unrecognized dataFrames: " + dataFrames);
                             }
                         }
                         catch (InterruptedException x)
@@ -463,7 +475,7 @@ public abstract class FlowControlStrategyTest
             }
         });
 
-        Assert.assertTrue(settingsLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(settingsLatch.await(5, TimeUnit.SECONDS));
 
         MetaData.Request metaData = newRequest("GET", new HttpFields());
         HeadersFrame requestFrame = new HeadersFrame(metaData, null, false);
@@ -487,20 +499,13 @@ public abstract class FlowControlStrategyTest
         // Consume the second chunk.
         callback.succeeded();
 
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
     }
 
     private void checkThatWeAreFlowControlStalled(Exchanger<Callback> exchanger) throws Exception
     {
-        try
-        {
-            exchanger.exchange(null, 1, TimeUnit.SECONDS);
-            Assert.fail();
-        }
-        catch (TimeoutException x)
-        {
-            // Expected.
-        }
+        assertThrows(TimeoutException.class,
+                () -> exchanger.exchange(null, 1, TimeUnit.SECONDS));
     }
 
     @Test
@@ -555,7 +560,7 @@ public abstract class FlowControlStrategyTest
                     prepareLatch.countDown();
             }
         });
-        Assert.assertTrue(prepareLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(prepareLatch.await(5, TimeUnit.SECONDS));
 
         // Second request will consume half of the remaining the session window.
         MetaData.Request request2 = newRequest("GET", new HttpFields());
@@ -595,14 +600,14 @@ public abstract class FlowControlStrategyTest
         });
 
         // Verify that the data does not arrive because the server session is stalled.
-        Assert.assertFalse(latch.await(1, TimeUnit.SECONDS));
+        assertFalse(latch.await(1, TimeUnit.SECONDS));
 
         // Consume the data of the first response.
         // This will open up the session window, allowing the fourth stream to send data.
         for (Callback callback : callbacks1)
             callback.succeeded();
 
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -650,90 +655,8 @@ public abstract class FlowControlStrategyTest
             }
         });
 
-        Assert.assertTrue(latch.await(15, TimeUnit.SECONDS));
-        Assert.assertArrayEquals(data, bytes);
-    }
-
-    // TODO
-    // Since we changed the API to disallow consecutive data() calls without waiting
-    // for the callback, it is now not possible to have DATA1, DATA2 in the queue for
-    // the same stream. Perhaps this test should just be deleted.
-    @Ignore
-    @Test
-    public void testServerTwoDataFramesWithStalledStream() throws Exception
-    {
-        // Frames in queue = DATA1, DATA2.
-        // Server writes part of DATA1, then stalls.
-        // A window update unstalls the session, verify that the data is correctly sent.
-
-        Random random = new Random();
-        final byte[] chunk1 = new byte[1024];
-        random.nextBytes(chunk1);
-        final byte[] chunk2 = new byte[2048];
-        random.nextBytes(chunk2);
-
-        // Two SETTINGS frames: the initial after the preface,
-        // and the explicit where we set the stream window size to zero.
-        final AtomicReference<CountDownLatch> settingsLatch = new AtomicReference<>(new CountDownLatch(2));
-        final CountDownLatch dataLatch = new CountDownLatch(1);
-        start(new ServerSessionListener.Adapter()
-        {
-            @Override
-            public void onSettings(Session session, SettingsFrame frame)
-            {
-                settingsLatch.get().countDown();
-            }
-
-            @Override
-            public Stream.Listener onNewStream(Stream stream, HeadersFrame frame)
-            {
-                stream.data(new DataFrame(stream.getId(), ByteBuffer.wrap(chunk1), false), Callback.NOOP);
-                stream.data(new DataFrame(stream.getId(), ByteBuffer.wrap(chunk2), true), Callback.NOOP);
-                dataLatch.countDown();
-                return null;
-            }
-        });
-
-        Session session = newClient(new Session.Listener.Adapter());
-        Map<Integer, Integer> settings = new HashMap<>();
-        settings.put(SettingsFrame.INITIAL_WINDOW_SIZE, 0);
-        session.settings(new SettingsFrame(settings, false), Callback.NOOP);
-        Assert.assertTrue(settingsLatch.get().await(5, TimeUnit.SECONDS));
-
-        byte[] content = new byte[chunk1.length + chunk2.length];
-        final ByteBuffer buffer = ByteBuffer.wrap(content);
-        MetaData.Request metaData = newRequest("GET", new HttpFields());
-        HeadersFrame requestFrame = new HeadersFrame(metaData, null, true);
-        final CountDownLatch responseLatch = new CountDownLatch(1);
-        session.newStream(requestFrame, new Promise.Adapter<>(), new Stream.Listener.Adapter()
-        {
-            @Override
-            public void onData(Stream stream, DataFrame frame, Callback callback)
-            {
-                buffer.put(frame.getData());
-                callback.succeeded();
-                if (frame.isEndStream())
-                    responseLatch.countDown();
-            }
-        });
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
-
-        // Now we have the 2 DATA frames queued in the server.
-
-        // Unstall the stream window.
-        settingsLatch.set(new CountDownLatch(1));
-        settings.clear();
-        settings.put(SettingsFrame.INITIAL_WINDOW_SIZE, chunk1.length / 2);
-        session.settings(new SettingsFrame(settings, false), Callback.NOOP);
-        Assert.assertTrue(settingsLatch.get().await(5, TimeUnit.SECONDS));
-
-        Assert.assertTrue(responseLatch.await(5, TimeUnit.SECONDS));
-
-        // Check that the data is sent correctly.
-        byte[] expected = new byte[content.length];
-        System.arraycopy(chunk1, 0, expected, 0, chunk1.length);
-        System.arraycopy(chunk2, 0, expected, chunk1.length, chunk2.length);
-        Assert.assertArrayEquals(expected, content);
+        assertTrue(latch.await(15, TimeUnit.SECONDS));
+        assertArrayEquals(data, bytes);
     }
 
     @Test
@@ -753,13 +676,7 @@ public abstract class FlowControlStrategyTest
                     @Override
                     public void onData(Stream stream, DataFrame frame, Callback callback)
                     {
-                        // Since we echo back the data
-                        // asynchronously we must copy it.
-                        ByteBuffer data = frame.getData();
-                        ByteBuffer copy = ByteBuffer.allocateDirect(data.remaining());
-                        copy.put(data).flip();
-                        completable.thenRun(() ->
-                                stream.data(new DataFrame(stream.getId(), copy, frame.isEndStream()), callback));
+                        completable.thenRun(() -> stream.data(frame, callback));
                     }
                 };
             }
@@ -804,17 +721,31 @@ public abstract class FlowControlStrategyTest
             stream.data(dataFrame, Callback.NOOP);
         });
 
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
 
         responseContent.flip();
-        Assert.assertArrayEquals(requestData, responseData);
+        assertArrayEquals(requestData, responseData);
     }
 
     @Test
     public void testClientExceedingSessionWindow() throws Exception
     {
         // On server, we don't consume the data.
-        start(new ServerSessionListener.Adapter());
+        start(new ServerSessionListener.Adapter()
+        {
+            @Override
+            public Stream.Listener onNewStream(Stream stream, HeadersFrame frame)
+            {
+                return new Stream.Listener.Adapter()
+                {
+                    @Override
+                    public void onData(Stream stream, DataFrame frame, Callback callback)
+                    {
+                        // Do not succeed the callback.
+                    }
+                };
+            }
+        });
 
         final CountDownLatch closeLatch = new CountDownLatch(1);
         Session session = newClient(new Session.Listener.Adapter()
@@ -842,14 +773,14 @@ public abstract class FlowControlStrategyTest
             {
                 return InvocationType.NON_BLOCKING;
             }
-            
+
             @Override
             public void succeeded()
             {
                 dataLatch.countDown();
             }
         });
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
 
         // The following "sneaky" write may clash with the write
         // of the reply SETTINGS frame sent by the client in
@@ -869,7 +800,7 @@ public abstract class FlowControlStrategyTest
         http2Session.getEndPoint().write(Callback.NOOP, buffers.toArray(new ByteBuffer[buffers.size()]));
 
         // Expect the connection to be closed.
-        Assert.assertTrue(closeLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(closeLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -884,6 +815,19 @@ public abstract class FlowControlStrategyTest
                 // Enlarge the session window.
                 ((ISession)session).updateRecvWindow(FlowControlStrategy.DEFAULT_WINDOW_SIZE);
                 return super.onPreface(session);
+            }
+
+            @Override
+            public Stream.Listener onNewStream(Stream stream, HeadersFrame frame)
+            {
+                return new Stream.Listener.Adapter()
+                {
+                    @Override
+                    public void onData(Stream stream, DataFrame frame, Callback callback)
+                    {
+                        // Do not succeed the callback.
+                    }
+                };
             }
         });
 
@@ -913,14 +857,14 @@ public abstract class FlowControlStrategyTest
             {
                 return InvocationType.NON_BLOCKING;
             }
-            
+
             @Override
             public void succeeded()
             {
                 dataLatch.countDown();
             }
         });
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
 
         // Wait for a while before doing the "sneaky" write
         // below, see comments in the previous test case.
@@ -936,7 +880,7 @@ public abstract class FlowControlStrategyTest
         http2Session.getEndPoint().write(Callback.NOOP, buffers.toArray(new ByteBuffer[buffers.size()]));
 
         // Expect the connection to be closed.
-        Assert.assertTrue(closeLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(closeLatch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -994,7 +938,7 @@ public abstract class FlowControlStrategyTest
             {
                 return InvocationType.NON_BLOCKING;
             }
-            
+
             @Override
             public void failed(Throwable x)
             {
@@ -1002,7 +946,74 @@ public abstract class FlowControlStrategyTest
             }
         });
 
-        Assert.assertTrue(resetLatch.await(5, TimeUnit.SECONDS));
-        Assert.assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(resetLatch.await(5, TimeUnit.SECONDS));
+        assertTrue(dataLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void testNoWindowUpdateForRemotelyClosedStream() throws Exception
+    {
+        List<Callback> callbacks = new ArrayList<>();
+        start(new ServerSessionListener.Adapter()
+        {
+            @Override
+            public Stream.Listener onNewStream(Stream stream, HeadersFrame frame)
+            {
+                return new Stream.Listener.Adapter()
+                {
+                    @Override
+                    public void onData(Stream stream, DataFrame frame, Callback callback)
+                    {
+                        callbacks.add(callback);
+                        if (frame.isEndStream())
+                        {
+                            // Succeed the callbacks when the stream is already remotely closed.
+                            callbacks.forEach(Callback::succeeded);
+                            MetaData.Response response = new MetaData.Response(HttpVersion.HTTP_2, HttpStatus.OK_200, new HttpFields());
+                            stream.headers(new HeadersFrame(stream.getId(), response, null, true), Callback.NOOP);
+                        }
+                    }
+                };
+            }
+        });
+
+        List<WindowUpdateFrame> sessionWindowUpdates = new ArrayList<>();
+        List<WindowUpdateFrame> streamWindowUpdates = new ArrayList<>();
+        client.setFlowControlStrategyFactory(() -> new BufferingFlowControlStrategy(0.5F)
+        {
+            @Override
+            public void onWindowUpdate(ISession session, IStream stream, WindowUpdateFrame frame)
+            {
+                if (frame.getStreamId() == 0)
+                    sessionWindowUpdates.add(frame);
+                else
+                    streamWindowUpdates.add(frame);
+                super.onWindowUpdate(session, stream, frame);
+            }
+        });
+
+        Session session = newClient(new Session.Listener.Adapter());
+        MetaData.Request metaData = newRequest("POST", new HttpFields());
+        HeadersFrame frame = new HeadersFrame(metaData, null, false);
+        FuturePromise<Stream> streamPromise = new FuturePromise<>();
+        CountDownLatch latch = new CountDownLatch(1);
+        session.newStream(frame, streamPromise, new Stream.Listener.Adapter()
+        {
+            @Override
+            public void onHeaders(Stream stream, HeadersFrame frame)
+            {
+                if (frame.isEndStream())
+                    latch.countDown();
+            }
+        });
+        Stream stream = streamPromise.get(5, TimeUnit.SECONDS);
+
+        ByteBuffer data = ByteBuffer.allocate(FlowControlStrategy.DEFAULT_WINDOW_SIZE - 1);
+        stream.data(new DataFrame(stream.getId(), data, true), Callback.NOOP);
+
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+
+        assertTrue(sessionWindowUpdates.size() > 0);
+        assertEquals(0, streamWindowUpdates.size());
     }
 }

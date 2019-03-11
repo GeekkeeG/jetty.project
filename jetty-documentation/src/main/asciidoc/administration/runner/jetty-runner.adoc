@@ -1,5 +1,6 @@
+//
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ========================================================================
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -13,6 +14,7 @@
 //
 //  You may elect to redistribute this code under either of these licenses.
 //  ========================================================================
+//
 
 [[jetty-runner]]
 === Use Jetty Without an Installed Distribution
@@ -25,7 +27,7 @@ Of course, if your webapp is not as straightforward, the `jetty-runner` has comm
 
 You will need the `jetty-runner` jar:
 
-1.  Download the `jetty-runner` jar available at http://central.maven.org/maven2/org/eclipse/jetty/jetty-runner/[Maven Central].
+1.  Download the `jetty-runner` jar available at https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-runner/[Maven Central].
 
 ==== Deploying a Simple Context
 
@@ -63,14 +65,14 @@ By default, `jetty-runner` implements all Configuration Classes so that users ca
 If you wish to only implement certain Configuration Classes, they will need to be defined in the context xml for the webapp/context.
 The default Configuration Classes are:
 
-  `org.eclipse.jetty.webapp.WebInfConfiguration`
-  `org.eclipse.jetty.webapp.WebXmlConfiguration`
-  `org.eclipse.jetty.webapp.MetaInfConfiguration`
-  `org.eclipse.jetty.webapp.FragmentConfiguration`
-  `org.eclipse.jetty.webapp.JettyWebXmlConfiguration`
-  `org.eclipse.jetty.plus.webapp.EnvConfiguration`
-  `org.eclipse.jetty.plus.webapp.PlusConfiguration`
-  `org.eclipse.jetty.annotations.AnnotationConfiguration`
+`org.eclipse.jetty.webapp.WebInfConfiguration`
+`org.eclipse.jetty.webapp.WebXmlConfiguration`
+`org.eclipse.jetty.webapp.MetaInfConfiguration`
+`org.eclipse.jetty.webapp.FragmentConfiguration`
+`org.eclipse.jetty.webapp.JettyWebXmlConfiguration`
+`org.eclipse.jetty.plus.webapp.EnvConfiguration`
+`org.eclipse.jetty.plus.webapp.PlusConfiguration`
+`org.eclipse.jetty.annotations.AnnotationConfiguration`
 
 You can learn more about implementing specific Configuration Classes link:https://www.eclipse.org/jetty/documentation/current/configuring-webapps.html#webapp-configurations[here.]
 
@@ -143,8 +145,8 @@ Server opts:
  --out file                          - info/warn/debug log filename (with optional 'yyyy_mm_dd' wildcard
  --host name|ip                      - interface to listen on (default is all interfaces)
  --port n                            - port to listen on (default 8080)
- --stop-port n                       - port to listen for stop command
- --stop-key n                        - security string for stop command (required if --stop-port is present)
+ --stop-port n                       - port to listen for stop command (or -DSTOP.PORT=n)
+ --stop-key n                        - security string for stop command (required if --stop-port is present) (or -DSTOP.KEY=n)
  [--jar file]*n                      - each tuple specifies an extra jar to be added to the classloader
  [--lib dir]*n                       - each tuple specifies an extra directory of jars to be added to the classloader
  [--classes dir]*n                   - each tuple specifies an extra directory of classes to be added to the classloader
@@ -200,14 +202,13 @@ To link:#how-to-configure-connectors[configure a https connector], use a Jetty x
 ....
 
 ===== Configuring Stop
-You can configure a port number for jetty to listen on for a stop command, so you are able to stop it from a different terminal.
+You can configure a port number for Jetty to listen on for a stop command, so you are able to stop it from a different terminal.
 This requires the use of a "secret" key, to prevent malicious or accidental termination.
-Use the `--stop-port` and `--stop-key` parameters as arguments to the `jetty-runner`:
+Use the `--stop-port` and `--stop-key` (or `-DSTOP.PORT=`  and `-DSTOP.KEY=`, respectively) parameters as arguments to the `jetty-runner`:
 
 [source, screen, subs="{sub-order}"]
 ....
 > java -jar jetty-runner.jar --stop-port 8181 --stop-key abc123
-
 ....
 
 Then, to stop Jetty from a different terminal, you need to supply the same port and key information.
@@ -216,7 +217,7 @@ Here's how to use a Jetty installation to perform a stop:
 
 [source, screen, subs="{sub-order}"]
 ....
-> java -jar start.jar --stop-port 8181 --stop-key abc123 --stop
+> java -jar start.jar -DSTOP.PORT=8181 -DSTOP.KEY=abc123 --stop
 ....
 
 ===== Configuring the Container Classpath

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Queue;
 import java.util.function.BiFunction;
 
@@ -39,15 +38,16 @@ import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.MetaData;
 import org.eclipse.jetty.http2.ErrorCode;
+import org.eclipse.jetty.http2.IStream;
 import org.eclipse.jetty.http2.api.Stream;
 import org.eclipse.jetty.http2.frames.DataFrame;
 import org.eclipse.jetty.http2.frames.HeadersFrame;
 import org.eclipse.jetty.http2.frames.PushPromiseFrame;
 import org.eclipse.jetty.http2.frames.ResetFrame;
-import org.eclipse.jetty.io.ByteBufferPool;
 import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.IteratingCallback;
+import org.eclipse.jetty.util.Retainable;
 
 public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listener
 {
@@ -62,6 +62,13 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
     protected HttpChannelOverHTTP2 getHttpChannel()
     {
         return (HttpChannelOverHTTP2)super.getHttpChannel();
+    }
+
+    @Override
+    protected void reset()
+    {
+        super.reset();
+        contentNotifier.reset();
     }
 
     @Override
@@ -96,11 +103,11 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
                 }
             }
         }
-        else
+        else // Response trailers.
         {
             HttpFields trailers = metaData.getFields();
             trailers.forEach(httpResponse::trailer);
-            responseSuccess(exchange);
+            notifyContent(exchange, new DataFrame(stream.getId(), BufferUtil.EMPTY_BUFFER, true), Callback.NOOP);
         }
     }
 
@@ -114,6 +121,7 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
         HttpRequest request = exchange.getRequest();
         MetaData.Request metaData = (MetaData.Request)frame.getMetaData();
         HttpRequest pushRequest = (HttpRequest)getHttpDestination().getHttpClient().newRequest(metaData.getURIString());
+        // TODO: copy PUSH_PROMISE headers into pushRequest.
 
         BiFunction<Request, Request, Response.CompleteListener> pushListener = request.getPushListener();
         if (pushListener != null)
@@ -121,7 +129,7 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
             Response.CompleteListener listener = pushListener.apply(request, pushRequest);
             if (listener != null)
             {
-                HttpChannelOverHTTP2 pushChannel = getHttpChannel().getHttpConnection().newHttpChannel(true);
+                HttpChannelOverHTTP2 pushChannel = getHttpChannel().getHttpConnection().acquireHttpChannel();
                 List<Response.ResponseListener> listeners = Collections.singletonList(listener);
                 HttpExchange pushExchange = new HttpExchange(getHttpDestination(), pushRequest, listeners);
                 pushChannel.associate(pushExchange);
@@ -144,23 +152,11 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
         if (exchange == null)
         {
             callback.failed(new IOException("terminated"));
-            return;
         }
-
-        // We must copy the data since we do not know when the
-        // application will consume the bytes and the parsing
-        // will continue as soon as this method returns, eventually
-        // leading to reusing the underlying buffer for more reads.
-        ByteBufferPool byteBufferPool = getHttpDestination().getHttpClient().getByteBufferPool();
-        ByteBuffer original = frame.getData();
-        int length = original.remaining();
-        final ByteBuffer copy = byteBufferPool.acquire(length, original.isDirect());
-        BufferUtil.clearToFill(copy);
-        copy.put(original);
-        BufferUtil.flipToFlush(copy, 0);
-
-        contentNotifier.offer(new DataInfo(exchange, copy, callback, frame.isEndStream()));
-        contentNotifier.iterate();
+        else
+        {
+            notifyContent(exchange, frame, callback);
+        }
     }
 
     @Override
@@ -169,34 +165,53 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
         HttpExchange exchange = getHttpExchange();
         if (exchange == null)
             return;
-
-        ErrorCode error = ErrorCode.from(frame.getError());
-        String reason = error == null ? "reset" : error.name().toLowerCase(Locale.ENGLISH);
-        exchange.getRequest().abort(new IOException(reason));
+        int error = frame.getError();
+        exchange.getRequest().abort(new IOException(ErrorCode.toString(error, "reset_code_" + error)));
     }
 
     @Override
     public boolean onIdleTimeout(Stream stream, Throwable x)
     {
-        responseFailure(x);
-        return true;
+        HttpExchange exchange = getHttpExchange();
+        if (exchange == null)
+            return false;
+        return !exchange.abort(x);
     }
 
-    private class ContentNotifier extends IteratingCallback
+    @Override
+    public void onFailure(Stream stream, int error, String reason, Callback callback)
+    {
+        responseFailure(new IOException(String.format("%s/%s", ErrorCode.toString(error, null), reason)));
+        callback.succeeded();
+    }
+
+    @Override
+    public void onClosed(Stream stream)
+    {
+        getHttpChannel().onStreamClosed((IStream)stream);
+    }
+
+    private void notifyContent(HttpExchange exchange, DataFrame frame, Callback callback)
+    {
+        contentNotifier.offer(new DataInfo(exchange, frame, callback));
+        contentNotifier.iterate();
+    }
+
+    private class ContentNotifier extends IteratingCallback implements Retainable
     {
         private final Queue<DataInfo> queue = new ArrayDeque<>();
         private DataInfo dataInfo;
 
-        private boolean offer(DataInfo dataInfo)
+        private void offer(DataInfo dataInfo)
         {
             synchronized (this)
             {
-                return queue.offer(dataInfo);
+                queue.offer(dataInfo);
             }
         }
 
         @Override
-        protected Action process() throws Exception
+        protected Action process()
         {
             DataInfo dataInfo;
             synchronized (this)
@@ -207,21 +222,31 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
             if (dataInfo == null)
             {
                 DataInfo prevDataInfo = this.dataInfo;
-                if (prevDataInfo != null && prevDataInfo.last)
+                if (prevDataInfo != null && prevDataInfo.frame.isEndStream())
                     return Action.SUCCEEDED;
                 return Action.IDLE;
             }
 
             this.dataInfo = dataInfo;
-            responseContent(dataInfo.exchange, dataInfo.buffer, this);
+            ByteBuffer buffer = dataInfo.frame.getData();
+            if (buffer.hasRemaining())
+                responseContent(dataInfo.exchange, buffer, this);
+            else
+                succeeded();
             return Action.SCHEDULED;
+        }
+
+        @Override
+        public void retain()
+        {
+            Callback callback = dataInfo.callback;
+            if (callback instanceof Retainable)
+                ((Retainable)callback).retain();
         }
 
         @Override
         public void succeeded()
         {
-            ByteBufferPool byteBufferPool = getHttpDestination().getHttpClient().getByteBufferPool();
-            byteBufferPool.release(dataInfo.buffer);
             dataInfo.callback.succeeded();
             super.succeeded();
         }
@@ -235,8 +260,6 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
         @Override
         protected void onCompleteFailure(Throwable failure)
         {
-            ByteBufferPool byteBufferPool = getHttpDestination().getHttpClient().getByteBufferPool();
-            byteBufferPool.release(dataInfo.buffer);
             dataInfo.callback.failed(failure);
             responseFailure(failure);
         }
@@ -245,16 +268,14 @@ public class HttpReceiverOverHTTP2 extends HttpReceiver implements Stream.Listen
     private static class DataInfo
     {
         private final HttpExchange exchange;
-        private final ByteBuffer buffer;
+        private final DataFrame frame;
         private final Callback callback;
-        private final boolean last;
 
-        private DataInfo(HttpExchange exchange, ByteBuffer buffer, Callback callback, boolean last)
+        private DataInfo(HttpExchange exchange, DataFrame frame, Callback callback)
         {
             this.exchange = exchange;
-            this.buffer = buffer;
+            this.frame = frame;
             this.callback = callback;
-            this.last = last;
         }
     }
 }

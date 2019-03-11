@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -22,6 +22,8 @@ import java.util.Map;
 
 public class SettingsFrame extends Frame
 {
+    public static final int DEFAULT_MAX_KEYS = 64;
+
     public static final int HEADER_TABLE_SIZE = 1;
     public static final int ENABLE_PUSH = 2;
     public static final int MAX_CONCURRENT_STREAMS = 3;

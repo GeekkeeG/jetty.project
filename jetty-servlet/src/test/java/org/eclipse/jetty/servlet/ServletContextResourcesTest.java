@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,8 +18,8 @@
 
 package org.eclipse.jetty.servlet;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertThat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -37,9 +37,9 @@ import org.eclipse.jetty.server.LocalConnector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.IO;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ServletContextResourcesTest
 {
@@ -75,7 +75,7 @@ public class ServletContextResourcesTest
     private LocalConnector connector;
     private ServletContextHandler context;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception
     {
         server = new Server();
@@ -95,7 +95,7 @@ public class ServletContextResourcesTest
         server.start();
     }
 
-    @After
+    @AfterEach
     public void destroy() throws Exception
     {
         server.stop();
@@ -113,7 +113,7 @@ public class ServletContextResourcesTest
         req1.append("Connection: close\r\n");
         req1.append("\r\n");
 
-        String response = connector.getResponses(req1.toString());
+        String response = connector.getResponse(req1.toString());
         assertThat("Response", response, containsString("Resource '/': <null>"));
     }
 
@@ -128,7 +128,7 @@ public class ServletContextResourcesTest
         req1.append("Connection: close\r\n");
         req1.append("\r\n");
 
-        String response = connector.getResponses(req1.toString());
+        String response = connector.getResponse(req1.toString());
         assertThat("Response", response, containsString("Resource '/content.txt': content goes here"));
     }
 }

@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,7 +28,9 @@ public final class Edge
 
     public Edge(Node from, Node to)
     {
-        if (from==null || to==null || from==to)
+        @SuppressWarnings("ReferenceEquality")
+        boolean sameObject = (from==to);
+        if (from==null || to==null || sameObject)
             throw new IllegalArgumentException("from "+from+" to "+to);
         _from = from;
         _to = to;
@@ -71,7 +73,7 @@ public final class Edge
     {
         return _from;
     }
-
+    
     public Node getTo()
     {
         return _to;

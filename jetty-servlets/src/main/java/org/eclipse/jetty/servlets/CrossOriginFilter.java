@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -54,7 +54,8 @@ import org.eclipse.jetty.util.log.Logger;
  * <dt>allowedOrigins</dt>
  * <dd>a comma separated list of origins that are
  * allowed to access the resources. Default value is <b>*</b>, meaning all
- * origins.
+ * origins.    Note that using wild cards can result in security problems
+ * for requests identifying hosts that do not exist. 
  * <p>
  * If an allowed origin contains one or more * characters (for example
  * http://*.domain.com), then "*" characters are converted to ".*", "."
@@ -166,6 +167,7 @@ public class CrossOriginFilter implements Filter
     private boolean allowCredentials;
     private boolean chainPreflight;
 
+    @Override
     public void init(FilterConfig config) throws ServletException
     {
         String allowedOriginsConfig = config.getInitParameter(ALLOWED_ORIGINS_PARAM);
@@ -257,6 +259,7 @@ public class CrossOriginFilter implements Filter
         return false;
     }
     
+    @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException
     {
         handle((HttpServletRequest)request, (HttpServletResponse)response, chain);
@@ -397,8 +400,7 @@ public class CrossOriginFilter implements Filter
     {
         response.setHeader(ACCESS_CONTROL_ALLOW_ORIGIN_HEADER, origin);
         //W3C CORS spec http://www.w3.org/TR/cors/#resource-implementation
-        if (!anyOriginAllowed)
-            response.addHeader("Vary", ORIGIN_HEADER);
+        response.addHeader("Vary", ORIGIN_HEADER);
         if (allowCredentials)
             response.setHeader(ACCESS_CONTROL_ALLOW_CREDENTIALS_HEADER, "true");
         if (!exposedHeaders.isEmpty())
@@ -501,6 +503,7 @@ public class CrossOriginFilter implements Filter
         return builder.toString();
     }
 
+    @Override
     public void destroy()
     {
         anyOriginAllowed = false;

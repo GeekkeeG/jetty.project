@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -44,14 +44,14 @@ public class DefaultSessionCache extends AbstractSessionCache
     /**
      * The cache of sessions in a hashmap
      */
-    protected ConcurrentHashMap<String, Session> _sessions = new ConcurrentHashMap<String, Session>();
+    protected ConcurrentHashMap<String, Session> _sessions = new ConcurrentHashMap<>();
     
     private final CounterStatistic _stats = new CounterStatistic();
     
     
     
     /**
-     * @param manager
+     * @param manager The SessionHandler related to this SessionCache
      */
     public DefaultSessionCache (SessionHandler manager)
     {
@@ -166,6 +166,7 @@ public class DefaultSessionCache extends AbstractSessionCache
                         LOG.warn(e);
                     }
                     doDelete (session.getId()); //remove from memory
+                    session.setResident(false);
                 }
                 else
                 {
@@ -222,6 +223,5 @@ public class DefaultSessionCache extends AbstractSessionCache
             _stats.increment();
         return result;
     }
-
 
 }

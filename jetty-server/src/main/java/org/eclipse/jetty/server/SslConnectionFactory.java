@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -37,6 +37,8 @@ public class SslConnectionFactory extends AbstractConnectionFactory
 {
     private final SslContextFactory _sslContextFactory;
     private final String _nextProtocol;
+    private boolean _directBuffersForEncryption = false;
+    private boolean _directBuffersForDecryption = false;
 
     public SslConnectionFactory()
     {
@@ -59,6 +61,26 @@ public class SslConnectionFactory extends AbstractConnectionFactory
     public SslContextFactory getSslContextFactory()
     {
         return _sslContextFactory;
+    }
+
+    public void setDirectBuffersForEncryption(boolean useDirectBuffers)
+    {
+        this._directBuffersForEncryption = useDirectBuffers;
+    }
+
+    public void setDirectBuffersForDecryption(boolean useDirectBuffers)
+    {
+        this._directBuffersForDecryption = useDirectBuffers;
+    }
+
+    public boolean isDirectBuffersForDecryption()
+    {
+        return _directBuffersForDecryption;
+    }
+
+    public boolean isDirectBuffersForEncryption()
+    {
+        return _directBuffersForEncryption;
     }
 
     public String getNextProtocol()
@@ -87,6 +109,7 @@ public class SslConnectionFactory extends AbstractConnectionFactory
 
         SslConnection sslConnection = newSslConnection(connector, endPoint, engine);
         sslConnection.setRenegotiationAllowed(_sslContextFactory.isRenegotiationAllowed());
+        sslConnection.setRenegotiationLimit(_sslContextFactory.getRenegotiationLimit());
         configure(sslConnection, connector, endPoint);
 
         ConnectionFactory next = connector.getConnectionFactory(_nextProtocol);
@@ -99,7 +122,7 @@ public class SslConnectionFactory extends AbstractConnectionFactory
 
     protected SslConnection newSslConnection(Connector connector, EndPoint endPoint, SSLEngine engine)
     {
-        return new SslConnection(connector.getByteBufferPool(), connector.getExecutor(), endPoint, engine);
+        return new SslConnection(connector.getByteBufferPool(), connector.getExecutor(), endPoint, engine, isDirectBuffersForEncryption(), isDirectBuffersForDecryption());
     }
 
     @Override

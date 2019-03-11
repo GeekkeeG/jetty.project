@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -29,10 +29,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
-
 import javax.servlet.ServletContext;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -49,11 +46,13 @@ import org.eclipse.jetty.server.HttpConnection;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.DecoratedObjectFactory;
+import org.eclipse.jetty.util.DeprecationWarning;
 import org.eclipse.jetty.util.StringUtil;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
+import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ScheduledExecutorScheduler;
 import org.eclipse.jetty.util.thread.Scheduler;
 import org.eclipse.jetty.websocket.api.InvalidWebSocketException;
@@ -65,6 +64,7 @@ import org.eclipse.jetty.websocket.common.LogicalConnection;
 import org.eclipse.jetty.websocket.common.SessionFactory;
 import org.eclipse.jetty.websocket.common.WebSocketSession;
 import org.eclipse.jetty.websocket.common.WebSocketSessionFactory;
+import org.eclipse.jetty.websocket.common.WebSocketSessionListener;
 import org.eclipse.jetty.websocket.common.events.EventDriver;
 import org.eclipse.jetty.websocket.common.events.EventDriverFactory;
 import org.eclipse.jetty.websocket.common.extensions.ExtensionStack;
@@ -79,7 +79,7 @@ import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 /**
  * Factory to create WebSocket connections
  */
-public class WebSocketServerFactory extends ContainerLifeCycle implements WebSocketCreator, WebSocketContainerScope, WebSocketServletFactory
+public class WebSocketServerFactory extends ContainerLifeCycle implements WebSocketCreator, WebSocketContainerScope, WebSocketServletFactory, WebSocketSessionListener
 {
     private static final Logger LOG = Log.getLogger(WebSocketServerFactory.class);
     
@@ -87,7 +87,7 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
     private final Map<Integer, WebSocketHandshake> handshakes = new HashMap<>();
     // TODO: obtain shared (per server scheduler, somehow)
     private final Scheduler scheduler = new ScheduledExecutorScheduler();
-    private final List<WebSocketSession.Listener> listeners = new CopyOnWriteArrayList<>();
+    private final List<WebSocketSessionListener> listeners = new ArrayList<>();
     private final String supportedVersions;
     private final WebSocketPolicy defaultPolicy;
     private final EventDriverFactory eventDriverFactory;
@@ -99,6 +99,14 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
     private Executor executor;
     private DecoratedObjectFactory objectFactory;
     private WebSocketCreator creator;
+
+    /**
+     * Entry point for Spring Boot's MockMVC framework
+     */
+    public WebSocketServerFactory()
+    {
+        this(WebSocketPolicy.newServerPolicy(), null, new MappedByteBufferPool());
+    }
     
     public WebSocketServerFactory(ServletContext context)
     {
@@ -141,23 +149,18 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
     private WebSocketServerFactory(ServletContext context, WebSocketPolicy policy, DecoratedObjectFactory objectFactory, Executor executor, ByteBufferPool bufferPool)
     {
         this.context = context;
+        this.defaultPolicy = policy;
         this.objectFactory = objectFactory;
         this.executor = executor;
-        
-        handshakes.put(HandshakeRFC6455.VERSION, new HandshakeRFC6455());
-        
-        addBean(scheduler);
-        addBean(bufferPool);
-        
-        this.contextClassloader = Thread.currentThread().getContextClassLoader();
-        
-        this.defaultPolicy = policy;
-        this.eventDriverFactory = new EventDriverFactory(this);
         this.bufferPool = bufferPool;
-        this.extensionFactory = new WebSocketExtensionFactory(this);
         
-        this.sessionFactories.add(new WebSocketSessionFactory(this));
         this.creator = this;
+        this.contextClassloader = Thread.currentThread().getContextClassLoader();
+        this.eventDriverFactory = new EventDriverFactory(this);
+        this.extensionFactory = new WebSocketExtensionFactory(this);
+
+        this.handshakes.put(HandshakeRFC6455.VERSION, new HandshakeRFC6455());
+        this.sessionFactories.add(new WebSocketSessionFactory(this));
         
         // Create supportedVersions
         List<Integer> versions = new ArrayList<>();
@@ -176,18 +179,30 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
             rv.append(v);
         }
         supportedVersions = rv.toString();
+        
+        addBean(scheduler);
+        addBean(bufferPool);
+        listeners.add(this);
     }
-    
-    public void addSessionListener(WebSocketSession.Listener listener)
+
+    @Override
+    public void addSessionListener(WebSocketSessionListener listener)
     {
-        listeners.add(listener);
+        this.listeners.add(listener);
     }
-    
-    public void removeSessionListener(WebSocketSession.Listener listener)
+
+    @Override
+    public void removeSessionListener(WebSocketSessionListener listener)
     {
-        listeners.remove(listener);
+        this.listeners.remove(listener);
     }
-    
+
+    @Override
+    public Collection<WebSocketSessionListener> getSessionListeners()
+    {
+        return this.listeners;
+    }
+
     @Override
     public boolean acceptWebSocket(HttpServletRequest request, HttpServletResponse response) throws IOException
     {
@@ -296,7 +311,7 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
         {
             return objectFactory.createInstance(firstClass);
         }
-        catch (InstantiationException | IllegalAccessException e)
+        catch (Exception e)
         {
             throw new WebSocketException("Unable to create instance of " + firstClass, e);
         }
@@ -305,27 +320,92 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
     @Override
     protected void doStart() throws Exception
     {
-        if(this.objectFactory == null && context != null)
+        if(this.objectFactory == null)
         {
-            this.objectFactory = (DecoratedObjectFactory) context.getAttribute(DecoratedObjectFactory.ATTR);
-            if (this.objectFactory == null)
-            {
-                throw new IllegalStateException("Unable to find required ServletContext attribute: " + DecoratedObjectFactory.ATTR);
-            }
+            this.objectFactory = findDecoratedObjectFactory();
         }
-    
-        if(this.executor == null && context != null)
+
+        if(this.executor == null)
         {
-            ContextHandler contextHandler = ContextHandler.getContextHandler(context);
-            this.executor = contextHandler.getServer().getThreadPool();
+            this.executor = findExecutor();
         }
-        
-        Objects.requireNonNull(this.objectFactory, DecoratedObjectFactory.class.getName());
-        Objects.requireNonNull(this.executor, Executor.class.getName());
-        
+
         super.doStart();
     }
-    
+
+    /**
+     * Attempt to find the DecoratedObjectFactory that should be used.
+     * @return the DecoratedObjectFactory that should be used. (never null)
+     */
+    private DecoratedObjectFactory findDecoratedObjectFactory()
+    {
+        DecoratedObjectFactory objectFactory;
+
+        if (context != null)
+        {
+            objectFactory = (DecoratedObjectFactory) context.getAttribute(DecoratedObjectFactory.ATTR);
+            if (objectFactory != null)
+            {
+                return objectFactory;
+            }
+        }
+
+        objectFactory = new DecoratedObjectFactory();
+        objectFactory.addDecorator(new DeprecationWarning());
+        LOG.info("No DecoratedObjectFactory provided, using new {}", objectFactory);
+        return objectFactory;
+    }
+
+    /**
+     * Attempt to find the Executor that should be used.
+     * @return the Executor that should be used. (never null)
+     */
+    private Executor findExecutor()
+    {
+        // Try as bean
+        Executor executor = getBean(Executor.class);
+        if (executor != null)
+        {
+            return executor;
+        }
+
+        // Attempt to pull Executor from ServletContext attribute
+        if (context != null)
+        {
+            // Try websocket specific one first
+            Executor contextExecutor = (Executor) context.getAttribute("org.eclipse.jetty.websocket.Executor");
+            if (contextExecutor != null)
+            {
+                return contextExecutor;
+            }
+
+            // Try ContextHandler version
+            contextExecutor = (Executor) context.getAttribute("org.eclipse.jetty.server.Executor");
+            if (contextExecutor != null)
+            {
+                return contextExecutor;
+            }
+
+            // Try Executor from Jetty Server
+            ContextHandler contextHandler = ContextHandler.getContextHandler(context);
+            if (contextHandler != null)
+            {
+                contextExecutor = contextHandler.getServer().getThreadPool();
+                if (contextExecutor != null) // This should always be true!
+                {
+                    return contextExecutor;
+                }
+            }
+        }
+
+        // All else fails, Create a new one
+        QueuedThreadPool threadPool = new QueuedThreadPool();
+        threadPool.setName("WebSocketServerFactory");
+        addManaged(threadPool);
+        LOG.info("No Executor provided, using new {}", threadPool);
+        return threadPool;
+    }
+
     @Override
     public ByteBufferPool getBufferPool()
     {
@@ -344,6 +424,7 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
         return this.executor;
     }
     
+    @Override
     public DecoratedObjectFactory getObjectFactory()
     {
         return objectFactory;
@@ -442,31 +523,14 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
     public void onSessionOpened(WebSocketSession session)
     {
         addManaged(session);
-        notifySessionListeners(listener -> listener.onOpened(session));
     }
-    
+
     @Override
     public void onSessionClosed(WebSocketSession session)
     {
         removeBean(session);
-        notifySessionListeners(listener -> listener.onClosed(session));
     }
-    
-    private void notifySessionListeners(Consumer<WebSocketSession.Listener> consumer)
-    {
-        for (WebSocketSession.Listener listener : listeners)
-        {
-            try
-            {
-                consumer.accept(listener);
-            }
-            catch (Throwable x)
-            {
-                LOG.info("Exception while invoking listener " + listener, x);
-            }
-        }
-    }
-    
+
     @Override
     public void register(Class<?> websocketPojo)
     {
@@ -630,5 +694,16 @@ public class WebSocketServerFactory extends ContainerLifeCycle implements WebSoc
                 return httpConf.getSendServerVersion();
         }
         return false;
+    }
+    
+    @Override
+    public String toString()
+    {
+        final StringBuilder sb = new StringBuilder(this.getClass().getSimpleName());
+        sb.append('@').append(Integer.toHexString(hashCode()));
+        sb.append("[defaultPolicy=").append(defaultPolicy);
+        sb.append(",creator=").append(creator.getClass().getName());
+        sb.append("]");
+        return sb.toString();
     }
 }

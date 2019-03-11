@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -55,6 +55,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
             syntax.put("jndi.syntax.separator", "/");
             syntax.put("jndi.syntax.ignorecase", "false");
         }
+        @Override
         public Name parse (String name)
             throws NamingException
         {
@@ -74,6 +75,7 @@ public class InitialContextFactory implements javax.naming.spi.InitialContextFac
      * @param env a <code>Hashtable</code> value
      * @return a <code>Context</code> value
      */
+    @Override
     public Context getInitialContext(Hashtable env)
     {
         __log.debug("InitialContextFactory.getInitialContext()");

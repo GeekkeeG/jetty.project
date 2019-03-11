@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,16 +18,24 @@
 
 package org.eclipse.jetty.http2.client;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.AsyncEvent;
 import javax.servlet.AsyncListener;
 import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -35,11 +43,13 @@ import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.MetaData;
+import org.eclipse.jetty.http2.ErrorCode;
 import org.eclipse.jetty.http2.api.Session;
 import org.eclipse.jetty.http2.api.Stream;
 import org.eclipse.jetty.http2.api.server.ServerSessionListener;
 import org.eclipse.jetty.http2.frames.DataFrame;
 import org.eclipse.jetty.http2.frames.HeadersFrame;
+import org.eclipse.jetty.http2.frames.ResetFrame;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
 import org.eclipse.jetty.io.EndPoint;
 import org.eclipse.jetty.server.Connector;
@@ -50,8 +60,8 @@ import org.eclipse.jetty.util.BufferUtil;
 import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.util.FuturePromise;
 import org.eclipse.jetty.util.Promise;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Test;
 
 public class AsyncServletTest extends AbstractTest
 {
@@ -98,7 +108,7 @@ public class AsyncServletTest extends AbstractTest
             {
                 try
                 {
-                    buffer.write(BufferUtil.toArray(frame.getData()));
+                    BufferUtil.writeTo(frame.getData(), buffer);
                     callback.succeeded();
                     if (frame.isEndStream())
                         latch.countDown();
@@ -110,8 +120,8 @@ public class AsyncServletTest extends AbstractTest
             }
         });
 
-        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
-        Assert.assertArrayEquals(content, buffer.toByteArray());
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertArrayEquals(content, buffer.toByteArray());
     }
 
     @Test
@@ -144,8 +154,8 @@ public class AsyncServletTest extends AbstractTest
         // When the client closes, the server receives the
         // corresponding frame and acts by notifying the failure,
         // which sends back to the client the error response.
-        Assert.assertTrue(serverLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
-        Assert.assertTrue(clientLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(serverLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(clientLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
     }
 
     @Test
@@ -177,8 +187,61 @@ public class AsyncServletTest extends AbstractTest
         // When the client resets, the server receives the
         // corresponding frame and acts by notifying the failure,
         // but the response is not sent back to the client.
-        Assert.assertTrue(serverLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
-        Assert.assertTrue(clientLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(serverLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(clientLatch.await(2 * idleTimeout, TimeUnit.MILLISECONDS));
+    }
+
+    @Test
+    public void testStartAsyncThenClientResetWithoutRemoteErrorNotification() throws Exception
+    {
+        HttpConfiguration httpConfiguration = new HttpConfiguration();
+        httpConfiguration.setNotifyRemoteAsyncErrors(false);
+        prepareServer(new HTTP2ServerConnectionFactory(httpConfiguration));
+        ServletContextHandler context = new ServletContextHandler(server, "/");
+        AtomicReference<AsyncContext> asyncContextRef = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+        context.addServlet(new ServletHolder(new HttpServlet()
+        {
+            @Override
+            protected void service(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
+            {
+                AsyncContext asyncContext = request.startAsync();
+                asyncContext.setTimeout(0);
+                asyncContextRef.set(asyncContext);
+                latch.countDown();
+            }
+        }), servletPath + "/*");
+        server.start();
+
+        prepareClient();
+        client.start();
+        Session session = newClient(new Session.Listener.Adapter());
+        HttpFields fields = new HttpFields();
+        MetaData.Request metaData = newRequest("GET", fields);
+        HeadersFrame frame = new HeadersFrame(metaData, null, true);
+        FuturePromise<Stream> promise = new FuturePromise<>();
+        session.newStream(frame, promise, new Stream.Listener.Adapter());
+        Stream stream = promise.get(5, TimeUnit.SECONDS);
+
+        // Wait for the server to be in ASYNC_WAIT.
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        sleep(500);
+
+        stream.reset(new ResetFrame(stream.getId(), ErrorCode.CANCEL_STREAM_ERROR.code), Callback.NOOP);
+
+        // Wait for the reset to be processed by the server.
+        sleep(500);
+
+        AsyncContext asyncContext = asyncContextRef.get();
+        ServletResponse response = asyncContext.getResponse();
+        ServletOutputStream output = response.getOutputStream();
+
+        assertThrows(IOException.class,
+                () -> {
+                    // Large writes or explicit flush() must
+                    // fail because the stream has been reset.
+                    output.flush();
+                });
     }
 
     @Test
@@ -280,8 +343,8 @@ public class AsyncServletTest extends AbstractTest
 
         // When the server idle times out, but the request has been dispatched
         // then the server must ignore the idle timeout as per Servlet semantic.
-        Assert.assertFalse(errorLatch.await(2 * timeout, TimeUnit.MILLISECONDS));
-        Assert.assertTrue(clientLatch.await(2 * timeout, TimeUnit.MILLISECONDS));
+        assertFalse(errorLatch.await(2 * timeout, TimeUnit.MILLISECONDS));
+        assertTrue(clientLatch.await(2 * timeout, TimeUnit.MILLISECONDS));
     }
 
     private void sleep(long ms)

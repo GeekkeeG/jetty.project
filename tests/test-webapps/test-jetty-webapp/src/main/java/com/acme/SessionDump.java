@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -30,6 +30,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+
+import org.eclipse.jetty.util.MultiMap;
 
 /** 
  * Test Servlet Sessions.
@@ -83,6 +85,7 @@ public class SessionDump extends HttpServlet
                 session = request.getSession(true);
                 session.setAttribute("test","value");
                 session.setAttribute("obj", new ObjectAttributeValue(System.currentTimeMillis()));
+                session.setAttribute("WEBCL", new MultiMap());
             }
             else if (session!=null)
             {
@@ -140,6 +143,8 @@ public class SessionDump extends HttpServlet
         }
         else
         {
+            if (session.getAttribute("WEBCL") == null)
+                session.setAttribute("WEBCL", new MultiMap());
             try
             {
                 out.println("<b>ID:</b> "+session.getId()+"<br/>");

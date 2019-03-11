@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -146,6 +146,7 @@ public abstract class AbstractWebAppProvider extends AbstractLifeCycle implement
             _webApp = webApp;
         }
 
+        @Override
         public String getContextPath()
         {
             return _contextPath;
@@ -589,15 +590,20 @@ public abstract class AbstractWebAppProvider extends AbstractLifeCycle implement
         Configuration.ClassList defaults = Configuration.ClassList.serverDefault(_serverWrapper.getServer());
 
         //add before JettyWebXmlConfiguration
-        if (annotationsAvailable())
+        if (annotationsAvailable() && !defaults.contains("org.eclipse.jetty.osgi.annotations.AnnotationConfiguration"))
             defaults.addBefore("org.eclipse.jetty.webapp.JettyWebXmlConfiguration", 
                                "org.eclipse.jetty.osgi.annotations.AnnotationConfiguration");
 
         //add in EnvConfiguration and PlusConfiguration just after FragmentConfiguration
         if (jndiAvailable())
-            defaults.addAfter("org.eclipse.jetty.webapp.FragmentConfiguration",
-                              "org.eclipse.jetty.plus.webapp.EnvConfiguration",
-                              "org.eclipse.jetty.plus.webapp.PlusConfiguration");
+        {
+            if (!defaults.contains("org.eclipse.jetty.plus.webapp.EnvConfiguration"))
+                defaults.addAfter("org.eclipse.jetty.webapp.FragmentConfiguration",
+                                  "org.eclipse.jetty.plus.webapp.EnvConfiguration");
+            if (!defaults.contains("org.eclipse.jetty.plus.webapp.PlusConfiguration"))
+                defaults.addAfter("org.eclipse.jetty.plus.webapp.EnvConfiguration", "org.eclipse.jetty.plus.webapp.PlusConfiguration");
+        }
+
        String[] asArray = new String[defaults.size()];
        return defaults.toArray(asArray);
     }
@@ -624,6 +630,7 @@ public abstract class AbstractWebAppProvider extends AbstractLifeCycle implement
     /** 
      * @see org.eclipse.jetty.deploy.AppProvider#setDeploymentManager(org.eclipse.jetty.deploy.DeploymentManager)
      */
+    @Override
     public void setDeploymentManager(DeploymentManager deploymentManager)
     {
         _deploymentManager = deploymentManager;
@@ -631,6 +638,7 @@ public abstract class AbstractWebAppProvider extends AbstractLifeCycle implement
     
     
     /* ------------------------------------------------------------ */
+    @Override
     public ContextHandler createContextHandler(App app) throws Exception
     {
         if (app == null)

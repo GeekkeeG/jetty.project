@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -28,9 +28,9 @@ import javax.websocket.WebSocketContainer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class AnnotatedEchoTest
 {
@@ -39,7 +39,7 @@ public class AnnotatedEchoTest
     private static URI serverUri;
 
     @SuppressWarnings("Duplicates")
-    @BeforeClass
+    @BeforeAll
     public static void startServer() throws Exception
     {
         server = new Server();
@@ -65,7 +65,7 @@ public class AnnotatedEchoTest
         serverUri = new URI(String.format("ws://%s:%d/",host,port));
     }
 
-    @AfterClass
+    @AfterAll
     public static void stopServer()
     {
         try
@@ -82,6 +82,7 @@ public class AnnotatedEchoTest
     public void testEcho() throws Exception
     {
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+        server.addBean(container); // allow to shutdown with server
         AnnotatedEchoClient echoer = new AnnotatedEchoClient();
         Session session = container.connectToServer(echoer,serverUri);
         session.getBasicRemote().sendText("Echo");

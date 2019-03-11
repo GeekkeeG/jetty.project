@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,13 +18,14 @@
 
 package org.eclipse.jetty.server.session;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
@@ -38,8 +39,8 @@ import org.eclipse.jetty.client.api.ContentResponse;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 
 /**
@@ -50,35 +51,24 @@ import org.junit.Test;
  */
 public class SameContextForwardedSessionTest
 {
-    protected CountDownLatch _synchronizer;
-    protected Servlet1 _one;
-    
-    @Before
-    public void setUp ()
-    {
-        _synchronizer = new CountDownLatch(1);
-        _one = new Servlet1();
-        _one.setSynchronizer(_synchronizer);
-    }
     
     
     @Test
     public void testSessionCreateInForward() throws Exception
-    {
-        
+    {      
         DefaultSessionCacheFactory cacheFactory = new DefaultSessionCacheFactory();
         cacheFactory.setEvictionPolicy(SessionCache.NEVER_EVICT);
         SessionDataStoreFactory storeFactory = new TestSessionDataStoreFactory();
         TestServer testServer = new TestServer(0, -1,  -1, cacheFactory, storeFactory);
 
         ServletContextHandler testServletContextHandler = testServer.addContext("/context");
-        ServletHolder holder = new ServletHolder(_one);
+        TestContextScopeListener scopeListener = new TestContextScopeListener();
+        testServletContextHandler.addEventListener(scopeListener);
+        ServletHolder holder = new ServletHolder(new Servlet1());
         testServletContextHandler.addServlet(holder, "/one");
         testServletContextHandler.addServlet(Servlet2.class, "/two");
         testServletContextHandler.addServlet(Servlet3.class, "/three");
         testServletContextHandler.addServlet(Servlet4.class, "/four");
-       
-      
 
         try
         {
@@ -89,15 +79,15 @@ public class SameContextForwardedSessionTest
             try
             {
                 //make a request to the first servlet, which will forward it to other servlets
+                CountDownLatch latch = new CountDownLatch(1);
+                scopeListener.setExitSynchronizer(latch);
                 ContentResponse response = client.GET("http://localhost:" + serverPort + "/context/one");
                 assertEquals(HttpServletResponse.SC_OK, response.getStatus());
                 String sessionCookie = response.getHeaders().get("Set-Cookie");
                 assertTrue(sessionCookie != null);
-                // Mangle the cookie, replacing Path with $Path, etc.
-                sessionCookie = sessionCookie.replaceFirst("(\\W)(P|p)ath=", "$1\\$Path=");
 
                 //wait until all of the request handling has finished 
-                _synchronizer.await();
+                latch.await(5, TimeUnit.SECONDS);
                 
                 //test that the session was created, and that it contains the attributes from servlet3 and servlet1
                 testServletContextHandler.getSessionHandler().getSessionCache().contains(TestServer.extractSessionId(sessionCookie));
@@ -105,7 +95,6 @@ public class SameContextForwardedSessionTest
        
                 //Make a fresh request
                 Request request = client.newRequest("http://localhost:" + serverPort + "/context/four");
-                request.header("Cookie", sessionCookie);
                 response = request.send();
                 assertEquals(HttpServletResponse.SC_OK, response.getStatus());
                 
@@ -125,12 +114,8 @@ public class SameContextForwardedSessionTest
 
     public static class Servlet1 extends HttpServlet
     {
-        CountDownLatch _synchronizer;
-        
-        public void setSynchronizer(CountDownLatch sync)
-        {
-            _synchronizer = sync;
-        }
+        private static final long serialVersionUID = 1L;
+
         
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
@@ -146,14 +131,13 @@ public class SameContextForwardedSessionTest
             assertNotNull(sess);
             assertNotNull(sess.getAttribute("servlet3"));
             sess.setAttribute("servlet1", "servlet1");
-            
-            if (_synchronizer != null)
-                _synchronizer.countDown();
         }
     }
 
     public static class Servlet2 extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {
@@ -174,6 +158,8 @@ public class SameContextForwardedSessionTest
 
     public static class Servlet3 extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {    
@@ -192,6 +178,8 @@ public class SameContextForwardedSessionTest
     
     public static class Servlet4 extends HttpServlet
     {
+        private static final long serialVersionUID = 1L;
+        
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
         {    

@@ -40,7 +40,6 @@ import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.DefaultHandler;
 import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.util.Scanner;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.xml.XmlConfiguration;
@@ -115,6 +114,7 @@ public class ServerProxyImpl implements ServerProxy
             this.awc = awc;
         }
 
+        @Override
         public void filesChanged(List<String> changedFileNames)
         {
             boolean isScanned = false;
@@ -151,6 +151,7 @@ public class ServerProxyImpl implements ServerProxy
     }
 
    
+    @Override
     public void addWebApplication(AntWebAppContext webApp)
     {
        webApplications.add(webApp);
@@ -242,6 +243,7 @@ public class ServerProxyImpl implements ServerProxy
     /**
      * @see org.eclipse.jetty.ant.utils.ServerProxy#start()
      */
+    @Override
     public void start()
     {
         try
@@ -289,6 +291,7 @@ public class ServerProxyImpl implements ServerProxy
     /**
      * @see org.eclipse.jetty.ant.utils.ServerProxy#getProxiedObject()
      */
+    @Override
     public Object getProxiedObject()
     {
         return server;
@@ -403,9 +406,8 @@ public class ServerProxyImpl implements ServerProxy
      */
     private void configureHandlers()
     {
-        RequestLogHandler requestLogHandler = new RequestLogHandler();
         if (requestLog != null)
-            requestLogHandler.setRequestLog(requestLog);
+            server.setRequestLog(requestLog);
 
         contexts = (ContextHandlerCollection) server
                 .getChildHandlerByClass(ContextHandlerCollection.class);
@@ -418,8 +420,7 @@ public class ServerProxyImpl implements ServerProxy
             {
                 handlers = new HandlerCollection();
                 server.setHandler(handlers);
-                handlers.setHandlers(new Handler[] { contexts, new DefaultHandler(),
-                        requestLogHandler });
+                handlers.setHandlers(new Handler[] { contexts, new DefaultHandler() });
             }
             else
             {

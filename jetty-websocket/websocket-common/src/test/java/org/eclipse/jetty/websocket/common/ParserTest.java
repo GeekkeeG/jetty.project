@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,14 +18,13 @@
 
 package org.eclipse.jetty.websocket.common;
 
-import static org.hamcrest.Matchers.is;
-
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import org.eclipse.jetty.util.StringUtil;
+import org.eclipse.jetty.websocket.api.ProtocolException;
 import org.eclipse.jetty.websocket.api.StatusCode;
 import org.eclipse.jetty.websocket.api.WebSocketBehavior;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
@@ -38,8 +37,12 @@ import org.eclipse.jetty.websocket.common.test.IncomingFramesCapture;
 import org.eclipse.jetty.websocket.common.test.UnitGenerator;
 import org.eclipse.jetty.websocket.common.test.UnitParser;
 import org.eclipse.jetty.websocket.common.util.Hex;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class ParserTest
 {
@@ -61,11 +64,8 @@ public class ParserTest
         IncomingFramesCapture capture = new IncomingFramesCapture();
         parser.setIncomingFramesHandler(capture);
 
-        parser.parseQuietly(completeBuf);
-
-        capture.assertErrorCount(1);
-        capture.assertHasFrame(OpCode.TEXT,1);
-        capture.assertHasFrame(OpCode.CONTINUATION,1);
+        ProtocolException x = assertThrows(ProtocolException.class, () -> parser.parseQuietly(completeBuf));
+        assertThat(x.getMessage(), containsString("CONTINUATION frame without prior !FIN"));
     }
 
     /**
@@ -83,10 +83,9 @@ public class ParserTest
         UnitParser parser = new UnitParser();
         IncomingFramesCapture capture = new IncomingFramesCapture();
         parser.setIncomingFramesHandler(capture);
-        parser.parseQuietly(completeBuf);
 
-        capture.assertErrorCount(1);
-        capture.assertHasFrame(OpCode.TEXT,1); // fragment 1
+        ProtocolException x = assertThrows(ProtocolException.class, () -> parser.parseQuietly(completeBuf));
+        assertThat(x.getMessage(), containsString("Unexpected TEXT frame"));
     }
 
     /**
@@ -111,7 +110,6 @@ public class ParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parseQuietly(completeBuf);
 
-        capture.assertErrorCount(0);
         capture.assertHasFrame(OpCode.TEXT,1);
         capture.assertHasFrame(OpCode.CONTINUATION,4);
         capture.assertHasFrame(OpCode.CLOSE,1);
@@ -135,7 +133,6 @@ public class ParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(completeBuf);
 
-        capture.assertErrorCount(0);
         capture.assertHasFrame(OpCode.TEXT,1);
         capture.assertHasFrame(OpCode.CLOSE,1);
         capture.assertHasFrame(OpCode.PONG,1);
@@ -185,7 +182,6 @@ public class ParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(completeBuf);
 
-        capture.assertErrorCount(0);
         capture.assertHasFrame(OpCode.TEXT,textCount);
         capture.assertHasFrame(OpCode.CONTINUATION,continuationCount);
         capture.assertHasFrame(OpCode.CLOSE,1);
@@ -204,8 +200,7 @@ public class ParserTest
         parser.setIncomingFramesHandler(capture);
         parser.parse(buf);
 
-        capture.assertNoErrors();
-        Assert.assertThat("Frame Count",capture.getFrames().size(),is(0));
+        assertThat("Frame Count",capture.getFrames().size(),is(0));
     }
 
     @Test
@@ -240,16 +235,15 @@ public class ParserTest
             networkBytes.position(networkBytes.position() + windowSize);
         }
 
-        capture.assertNoErrors();
-        Assert.assertThat("Frame Count",capture.getFrames().size(),is(2));
+        assertThat("Frame Count",capture.getFrames().size(),is(2));
         WebSocketFrame frame = capture.getFrames().poll();
-        Assert.assertThat("Frame[0].opcode",frame.getOpCode(),is(OpCode.TEXT));
+        assertThat("Frame[0].opcode",frame.getOpCode(),is(OpCode.TEXT));
         ByteBuffer actualPayload = frame.getPayload();
-        Assert.assertThat("Frame[0].payload.length",actualPayload.remaining(),is(payload.length));
+        assertThat("Frame[0].payload.length",actualPayload.remaining(),is(payload.length));
         // Should be all '*' characters (if masking is correct)
         for (int i = actualPayload.position(); i < actualPayload.remaining(); i++)
         {
-            Assert.assertThat("Frame[0].payload[i]",actualPayload.get(i),is((byte)'*'));
+            assertThat("Frame[0].payload[i]",actualPayload.get(i),is((byte)'*'));
         }
     }
 }

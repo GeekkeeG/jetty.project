@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -18,24 +18,19 @@
 
 package org.eclipse.jetty.websocket.common.extensions;
 
+import org.eclipse.jetty.io.ByteBufferPool;
+import org.eclipse.jetty.io.MappedByteBufferPool;
 import org.eclipse.jetty.websocket.api.WebSocketPolicy;
-import org.eclipse.jetty.websocket.common.test.LeakTrackingBufferPoolRule;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.rules.TestName;
+import org.junit.jupiter.api.BeforeEach;
 
 public abstract class AbstractExtensionTest
 {
-    @Rule
-    public TestName testname = new TestName();
-    
-    @Rule
-    public LeakTrackingBufferPoolRule bufferPool = new LeakTrackingBufferPoolRule("Test");
+    public ByteBufferPool bufferPool = new MappedByteBufferPool();
 
     protected ExtensionTool clientExtensions;
     protected ExtensionTool serverExtensions;
 
-    @Before
+    @BeforeEach
     public void init()
     {
         clientExtensions = new ExtensionTool(WebSocketPolicy.newClientPolicy(),bufferPool);

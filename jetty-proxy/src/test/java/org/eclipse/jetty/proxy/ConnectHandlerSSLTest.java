@@ -1,6 +1,6 @@
 //
 //  ========================================================================
-//  Copyright (c) 1995-2017 Mort Bay Consulting Pty. Ltd.
+//  Copyright (c) 1995-2019 Mort Bay Consulting Pty. Ltd.
 //  ------------------------------------------------------------------------
 //  All rights reserved. This program and the accompanying materials
 //  are made available under the terms of the Eclipse Public License v1.0
@@ -17,6 +17,8 @@
 //
 
 package org.eclipse.jetty.proxy;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -41,15 +43,15 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.toolchain.test.MavenTestingUtils;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
 {
     private SslContextFactory sslContextFactory;
 
-    @Before
+    @BeforeEach
     public void prepare() throws Exception
     {
         sslContextFactory = new SslContextFactory();
@@ -81,8 +83,8 @@ public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
             output.flush();
 
             // Expect 200 OK from the CONNECT request
-            HttpTester.Response response = readResponse(socket.getInputStream());
-            Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+            HttpTester.Response response = HttpTester.parseResponse(HttpTester.from(socket.getInputStream()));
+            assertEquals(HttpStatus.OK_200, response.getStatus());
 
             // Upgrade the socket to SSL
             try (SSLSocket sslSocket = wrapSocket(socket))
@@ -96,9 +98,9 @@ public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
                 output.write(request.getBytes(StandardCharsets.UTF_8));
                 output.flush();
 
-                response = readResponse(sslSocket.getInputStream());
-                Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
-                Assert.assertEquals("GET /echo", response.getContent());
+                response = HttpTester.parseResponse(HttpTester.from(sslSocket.getInputStream()));
+                assertEquals(HttpStatus.OK_200, response.getStatus());
+                assertEquals("GET /echo", response.getContent());
             }
         }
     }
@@ -119,8 +121,8 @@ public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
             output.flush();
 
             // Expect 200 OK from the CONNECT request
-            HttpTester.Response response = readResponse(socket.getInputStream());
-            Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
+            HttpTester.Response response = HttpTester.parseResponse(HttpTester.from(socket.getInputStream()));
+            assertEquals(HttpStatus.OK_200, response.getStatus());
 
             // Upgrade the socket to SSL
             try (SSLSocket sslSocket = wrapSocket(socket))
@@ -138,9 +140,9 @@ public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
                     output.write(request.getBytes(StandardCharsets.UTF_8));
                     output.flush();
 
-                    response = readResponse(sslSocket.getInputStream());
-                    Assert.assertEquals(HttpStatus.OK_200, response.getStatus());
-                    Assert.assertEquals("POST /echo?param=" + i + "\r\nHELLO", response.getContent());
+                    response = HttpTester.parseResponse(HttpTester.from(sslSocket.getInputStream()));
+                    assertEquals(HttpStatus.OK_200, response.getStatus());
+                    assertEquals("POST /echo?param=" + i + "\r\nHELLO", response.getContent());
                 }
             }
         }
@@ -158,6 +160,7 @@ public class ConnectHandlerSSLTest extends AbstractConnectHandlerTest
 
     private static class ServerHandler extends AbstractHandler
     {
+        @Override
         public void handle(String target, Request request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) throws IOException, ServletException
         {
             request.setHandled(true);
